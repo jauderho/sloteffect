@@ -25,6 +25,8 @@ export interface SlotNumberProps {
   suffix?: string;
   /** Roll direction; defaults to `both` (random per digit). */
   direction?: SlotDirection;
+  /** Randomize each digit's spin/settle per play; defaults to `false`. */
+  randomSpin?: boolean;
   /** Optional class on the inline-flex container. */
   className?: string;
   /** Optional inline style merged onto the container. */
@@ -37,6 +39,7 @@ export function SlotNumber({
   locales = "en-US",
   suffix = "",
   direction = "both",
+  randomSpin = false,
   className,
   style,
 }: SlotNumberProps) {
@@ -49,6 +52,7 @@ export function SlotNumber({
     <SlotText
       text={text}
       direction={direction}
+      randomSpin={randomSpin}
       className={className}
       style={style}
     />

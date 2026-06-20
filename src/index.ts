@@ -1,5 +1,5 @@
 /**
- * sloteffect — Stock-Events-style slot-machine rolls for numbers, letters, and
+ * sloteffect — slot-machine-style rolls for numbers, letters, and
  * text. Dependency-free (React peer dependency only), accessible, and honoring
  * `prefers-reduced-motion`.
  */

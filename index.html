@@ -6,7 +6,7 @@
     <title>sloteffect — slot-machine rolls for React</title>
     <meta
       name="description"
-      content="Stock-Events-style slot-machine rolls for numbers, letters, and text in React. Dependency-free, accessible, reduced-motion aware."
+      content="Slot-machine-style rolls for numbers, letters, and text in React. Dependency-free, accessible, reduced-motion aware."
     />
     <style>
       @import url("https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;1,400&family=Hanken+Grotesk:wght@400;500;600;700&family=Noto+Serif+TC:wght@400;500&family=Noto+Sans+TC:wght@400;500;600;700&display=swap");
@@ -126,6 +126,31 @@
         outline-offset: 2px;
       }
 
+      .movie {
+        margin: 28px 0 0;
+      }
+      .movie img {
+        display: block;
+        width: 100%;
+        max-width: 600px;
+        height: auto;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        background: var(--surface);
+      }
+      .movie figcaption {
+        margin-top: 8px;
+        font-size: 12px;
+        color: var(--text3);
+      }
+      .section {
+        font-family: "Newsreader", "Noto Serif TC", serif;
+        font-weight: 500;
+        font-size: clamp(22px, 3.5vw, 30px);
+        letter-spacing: -0.01em;
+        margin: 26px 0 14px;
+        line-height: 1.1;
+      }
       .card {
         background: var(--surface);
         border: 1px solid var(--border);
@@ -248,6 +273,17 @@
         min-height: 1.4em;
       }
 
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 20px 32px;
+      }
+      /* Random-spin toggle sits at the lower right; its labels align right. */
+      .controls > div:last-child {
+        text-align: right;
+      }
       .seg {
         display: inline-flex;
         background: var(--surface2);
@@ -336,9 +372,13 @@
       const LOWER = "abcdefghijklmnopqrstuvwxyz";
       const ROW_H = 1.3;
       const SLOT_EASING =
-        "linear(0, 0.0548, 0.1842, 0.3463, 0.5118, 0.6628, 0.7895, 0.8885, 0.9605, " +
-        "1.0086, 1.0372, 1.051, 1.0542, 1.0508, 1.0435, 1.0346, 1.0256, 1.0176, " +
-        "1.0108, 1.0056, 1.0018, 0.9993, 0.9979, 0.9972, 0.9971, 1)";
+        "linear(0, 0.0208, 0.0752, 0.1525, 0.2439, 0.3422, 0.4417, 0.5382, 0.6286, " +
+        "0.711, 0.7839, 0.847, 0.9002, 0.944, 0.9789, 1.0058, 1.0257, 1.0395, " +
+        "1.0483, 1.0529, 1.0543, 1.0532, 1.0502, 1.046, 1.041, 1.0357, 1.0303, " +
+        "1.0251, 1.0202, 1.0157, 1.0117, 1.0083, 1.0054, 1.003, 1.0011, 0.9997, " +
+        "0.9986, 0.9979, 0.9974, 0.9971, 0.9971, 0.9971, 0.9973, 0.9975, 0.9978, " +
+        "0.9981, 0.9984, 0.9986, 0.9989, 0.9991, 0.9994, 0.9995, 0.9997, 0.9998, " +
+        "0.9999, 1, 1.0001, 1.0001, 1.0001, 1.0002, 1)";
 
       function charsetOf(ch) {
         if (ch >= "0" && ch <= "9") return DIGITS;
@@ -364,151 +404,328 @@
         for (let k = 0; k <= steps; k++) rows.push(cs[(fi - k + len) % len]);
         return rows;
       }
-      function buildRoll(from, to, direction, coin) {
+      function buildRoll(from, to, direction, coin, fill = []) {
         const rollUp = direction === "both" ? coin < 0.5 : direction === "up";
         const cs = sharedCharset(from, to);
-        if (rollUp) {
-          const rows = cs ? forwardPath(cs, from, to) : [from, to];
-          return { rows, startRow: 0, endRow: rows.length - 1 };
-        }
-        const rows = (cs ? backwardPath(cs, from, to) : [from, to]).reverse();
+        const path = cs
+          ? rollUp
+            ? forwardPath(cs, from, to)
+            : backwardPath(cs, from, to)
+          : [from, ...fill, to];
+        if (rollUp) return { rows: path, startRow: 0, endRow: path.length - 1 };
+        const rows = path.slice().reverse();
         return { rows, startRow: rows.length - 1, endRow: 0 };
       }
-      const rollDuration = () => 750 + Math.random() * 300;
+      const rollDuration = (coin = Math.random()) => 750 + coin * 300;
+      function hashSeed(str) {
+        let h = 2166136261;
+        for (let i = 0; i < str.length; i++) {
+          h ^= str.charCodeAt(i);
+          h = Math.imul(h, 16777619);
+        }
+        return h >>> 0;
+      }
+      function makeRng(seed) {
+        let s = seed >>> 0;
+        return () => {
+          s = (s + 0x6d2b79f5) | 0;
+          let t = Math.imul(s ^ (s >>> 15), 1 | s);
+          t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+      }
+      const STEADY_COIN = 0.5;
       const prefersReducedMotion = () =>
         window.matchMedia &&
         window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-      const HOST_STYLE = {
-        position: "relative",
-        display: "inline-block",
-        overflow: "hidden",
-        height: ROW_H + "em",
-        lineHeight: 1,
-        verticalAlign: "middle",
-        whiteSpace: "pre",
-      };
-      const GLYPH_STYLE = {
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        height: ROW_H + "em",
-        lineHeight: 1,
-      };
-      const ROW_CSS =
-        "display:flex;align-items:center;justify-content:center;height:" +
-        ROW_H +
-        "em;line-height:1";
-
-      // At rest a cell is one naturally-sized glyph; the rolling strip is built
-      // imperatively only during a transition, then torn down.
-      function SlotCell({ glyph, direction }) {
-        const hostRef = useRef(null);
-        const glyphRef = useRef(null);
-        const rollerRef = useRef(null);
-        const prevRef = useRef(glyph);
-
-        useLayoutEffect(() => {
-          const from = prevRef.current;
-          const to = glyph;
-          prevRef.current = to;
-          const host = hostRef.current;
-          const rest = glyphRef.current;
-          if (!host || !rest) return;
-
-          const clear = () => {
-            const roller = rollerRef.current;
-            if (roller) {
-              for (const a of roller.getAnimations()) a.cancel();
-              roller.remove();
-              rollerRef.current = null;
-            }
-            rest.style.visibility = "";
-          };
-
-          if (from === to || prefersReducedMotion()) {
-            clear();
-            return;
-          }
-          clear();
-
-          const { rows, startRow, endRow } = buildRoll(
-            from,
-            to,
-            direction,
-            Math.random(),
-          );
-          const roller = document.createElement("span");
-          roller.setAttribute("aria-hidden", "true");
-          roller.style.cssText =
-            "position:absolute;left:0;top:0;width:100%;will-change:transform";
-          for (const ch of rows) {
-            const row = document.createElement("span");
-            row.style.cssText = ROW_CSS;
-            row.textContent = ch;
-            roller.appendChild(row);
-          }
-          rest.style.visibility = "hidden";
-          host.appendChild(roller);
-          rollerRef.current = roller;
-
-          const at = (i) => `translateY(${-(i * ROW_H)}em)`;
-          roller.style.transform = at(endRow);
-          const anim = roller.animate(
-            [{ transform: at(startRow) }, { transform: at(endRow) }],
-            { duration: rollDuration(), easing: SLOT_EASING },
-          );
-          anim.onfinish = () => {
-            if (rollerRef.current === roller) clear();
-          };
-          return clear;
-        }, [glyph, direction]);
-
+      const SPIN_LENGTH = 6;
+      const DEFAULT_SPIN_POOL =
+        "的一是不了人我在有他這為之大來以個中上們到說國和地也子時道出而要於就下得可你年生自會那後能對著事其裡所去行過家十用發天如然作方成者多日都三小軍二無同麼經法當起與好看學進種將還分此心前面又定見只主沒公從金東風花雨山水火土木月日星雲海";
+      function isIdeograph(ch) {
+        const cp = ch.codePointAt(0) || 0;
         return (
-          <span ref={hostRef} style={HOST_STYLE}>
-            <span ref={glyphRef} style={GLYPH_STYLE}>
-              {glyph}
-            </span>
-          </span>
+          (cp >= 0x3400 && cp <= 0x9fff) ||
+          (cp >= 0xf900 && cp <= 0xfaff) ||
+          (cp >= 0x20000 && cp <= 0x2fa1f)
         );
       }
-
-      function segment(text) {
-        if (typeof Intl !== "undefined" && "Segmenter" in Intl) {
-          const seg = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-          return Array.from(seg.segment(text), (s) => s.segment);
-        }
-        return Array.from(text);
+      const isEmoji = (ch) => /\p{Extended_Pictographic}/u.test(ch);
+      // A reel only rolls between graphemes of the same kind, and never for the
+      // non-rolling kinds emoji/symbol — so currency symbols, separators, and
+      // emoji always swap statically while letters and ideographs roll/flip.
+      function glyphKind(ch) {
+        if (isEmoji(ch)) return "emoji";
+        const cs = charsetOf(ch);
+        if (cs) return cs;
+        if (isIdeograph(ch)) return "ideograph";
+        return /\p{Letter}/u.test(ch) ? "letter" : "symbol";
+      }
+      const STATIC_KINDS = new Set(["emoji", "symbol"]);
+      function sampleSpin(pool, n, rand = Math.random) {
+        const chars = Array.from(pool);
+        const out = [];
+        for (let i = 0; i < n; i++)
+          out.push(chars[Math.floor(rand() * chars.length)]);
+        return out;
+      }
+      function randomGlyph(pool, exclude = "", rand = Math.random) {
+        const choices = pool.filter((g) => g !== exclude);
+        const from = choices.length ? choices : pool;
+        return from[Math.floor(rand() * from.length)] ?? "";
+      }
+      // Decide how `target` animates from the aligned previous grapheme
+      // `source`: same-kind sources roll from their real value, otherwise a
+      // same-kind start glyph is synthesized so every changed grapheme spins.
+      // Emoji, symbols, and unchanged graphemes return null (shown statically).
+      function chooseReel(target, source, letterPool, spinPool, rand = Math.random) {
+        const kind = glyphKind(target);
+        if (STATIC_KINDS.has(kind)) return null;
+        const cs = charsetOf(target);
+        const usable =
+          source && !isEmoji(source) && glyphKind(source) === kind;
+        const from = usable
+          ? source
+          : randomGlyph(
+              cs
+                ? Array.from(cs)
+                : isIdeograph(target)
+                  ? Array.from(spinPool)
+                  : letterPool,
+              target,
+              rand,
+            );
+        if (!from || from === target) return null;
+        const fill = cs
+          ? []
+          : isIdeograph(target)
+            ? sampleSpin(spinPool, SPIN_LENGTH, rand)
+            : sampleSpin(letterPool.join(""), SPIN_LENGTH, rand);
+        return { from, fill };
       }
 
-      function SlotText({ text, direction = "both", dir = "auto", style }) {
+      const ROW_CSS =
+        "display:block;height:" +
+        ROW_H +
+        "em;line-height:" +
+        ROW_H +
+        ";white-space:pre";
+
+      function segmentWithOffsets(text) {
+        const out = [];
+        if (typeof Intl !== "undefined" && "Segmenter" in Intl) {
+          const seg = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+          for (const s of seg.segment(text))
+            out.push({ g: s.segment, start: s.index });
+          return out;
+        }
+        let i = 0;
+        for (const ch of text) {
+          out.push({ g: ch, start: i });
+          i += ch.length;
+        }
+        return out;
+      }
+
+      // Resting text is one kerned run; on change, overlay measured reels at each
+      // grapheme's real (kerned) box so spacing/kerning/RTL match normal text.
+      function resolveBackground(el) {
+        let node = el;
+        while (node) {
+          const bg = getComputedStyle(node).backgroundColor;
+          if (bg && bg !== "transparent" && !bg.startsWith("rgba(0, 0, 0, 0"))
+            return bg;
+          node = node.parentElement;
+        }
+        return getComputedStyle(document.body).backgroundColor || "#fff";
+      }
+
+      function SlotText({
+        text,
+        direction = "both",
+        dir = "auto",
+        spinPool = DEFAULT_SPIN_POOL,
+        randomSpin = false,
+        style,
+      }) {
         const label = String(text);
-        const cells = segment(label);
-        const n = cells.length;
+        const hostRef = useRef(null);
+        const textRef = useRef(null);
+        const layerRef = useRef(null);
+        const cellsRef = useRef([]);
+
+        useLayoutEffect(() => {
+          const host = hostRef.current;
+          const textEl = textRef.current;
+          const layer = layerRef.current;
+          if (!host || !textEl || !layer) return;
+
+          // Wipe the previous value's reels before spinning this one in.
+          const wipe = () => {
+            for (const c of cellsRef.current) {
+              for (const a of c.getAnimations()) a.cancel();
+              c.remove();
+            }
+            cellsRef.current = [];
+          };
+          wipe();
+
+          const node = textEl.firstChild;
+          if (!node || prefersReducedMotion()) {
+            textEl.style.visibility = "visible";
+            return wipe;
+          }
+
+          // Off → a per-value seed makes the roll identical every play; on →
+          // truly random. Drives start glyph, spin glyphs, and direction.
+          const rand = randomSpin ? Math.random : makeRng(hashSeed(label));
+
+          const toG = segmentWithOffsets(label);
+          const hostRect = host.getBoundingClientRect();
+          const bg = resolveBackground(host);
+          // Lift each reel cell by the row's half-leading so it sits exactly on
+          // the measured glyph box.
+          const lead =
+            ((ROW_H - 1) / 2) * parseFloat(getComputedStyle(host).fontSize);
+
+          // Other-script letters spin through this value's own same-kind glyphs.
+          const letterPool = [
+            ...new Set(
+              toG.map((x) => x.g).filter((g) => glyphKind(g) === "letter"),
+            ),
+          ];
+
+          // Measure every grapheme's kerned box first (reads), then build all
+          // cells (writes), to avoid a forced reflow per glyph.
+          const plans = [];
+          for (const { g, start } of toG) {
+            const reel = chooseReel(g, null, letterPool, spinPool, rand);
+            if (!reel && g.trim() === "") continue; // whitespace: nothing to show
+            const range = document.createRange();
+            range.setStart(node, start);
+            range.setEnd(node, start + g.length);
+            plans.push({ g, reel, rect: range.getBoundingClientRect() });
+          }
+
+          // Hide the measured text; the cells are now the resting glyphs.
+          textEl.style.visibility = "hidden";
+
+          const cells = [];
+          const at = (i) => `translateY(${-(i * ROW_H)}em)`;
+          for (const { g, reel, rect } of plans) {
+            const cell = document.createElement("span");
+            cell.setAttribute("aria-hidden", "true");
+            const left = rect.left - hostRect.left;
+            const top = rect.top - hostRect.top;
+
+            if (!reel) {
+              // A symbol (currency, separator, punctuation): render statically.
+              cell.style.cssText =
+                "position:absolute;left:" +
+                left +
+                "px;top:" +
+                top +
+                "px;line-height:1;white-space:pre";
+              cell.textContent = g;
+              layer.appendChild(cell);
+              cells.push(cell);
+              continue;
+            }
+
+            cell.style.cssText =
+              "position:absolute;left:" +
+              left +
+              "px;top:" +
+              (top - lead) +
+              "px;width:" +
+              rect.width +
+              "px;height:" +
+              ROW_H +
+              "em;overflow:hidden;background:" +
+              bg;
+
+            const { rows, startRow, endRow } = buildRoll(
+              reel.from,
+              g,
+              direction,
+              rand(),
+              reel.fill,
+            );
+            const strip = document.createElement("span");
+            strip.style.cssText =
+              "position:absolute;left:0;top:0;width:100%;will-change:transform";
+            for (const ch of rows) {
+              const row = document.createElement("span");
+              row.style.cssText = ROW_CSS;
+              row.textContent = ch;
+              strip.appendChild(row);
+            }
+            cell.appendChild(strip);
+            // Land on the final glyph and stay — the reel is the rest state.
+            strip.style.transform = at(endRow);
+            // randomSpin staggers each settle; otherwise all settle as one.
+            const duration = rollDuration(randomSpin ? Math.random() : STEADY_COIN);
+            // Keep the strip promoted (will-change stays) so finishing never
+            // triggers a layer de-promotion repaint (a final flicker).
+            strip.animate(
+              [{ transform: at(startRow) }, { transform: at(endRow) }],
+              { duration, easing: SLOT_EASING },
+            );
+            layer.appendChild(cell);
+            cells.push(cell);
+          }
+
+          cellsRef.current = cells;
+          return wipe;
+        }, [label, direction, spinPool, randomSpin]);
+
         return (
           <span
+            ref={hostRef}
             role="img"
             aria-label={label}
             dir={dir}
-            style={{ display: "inline-block", whiteSpace: "pre", ...style }}
+            style={{
+              position: "relative",
+              display: "inline-block",
+              whiteSpace: "pre",
+              lineHeight: ROW_H,
+              fontKerning: "normal",
+              textRendering: "optimizeLegibility",
+              ...style,
+            }}
           >
-            {cells.map((g, i) => (
-              <SlotCell key={`c${n - i}`} glyph={g} direction={direction} />
-            ))}
+            <span ref={textRef}>{label}</span>
+            <span
+              ref={layerRef}
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                left: 0,
+                top: 0,
+                pointerEvents: "none",
+              }}
+            />
           </span>
         );
       }
 
-      function SlotLetter({ char, direction = "both", style }) {
+      function SlotLetter({
+        char,
+        direction = "both",
+        spinPool,
+        randomSpin = false,
+        style,
+      }) {
         const ch = Array.from(String(char))[0] ?? "";
         return (
-          <span
-            role="img"
-            aria-label={ch}
-            style={{ display: "inline-block", ...style }}
-          >
-            <SlotCell glyph={ch} direction={direction} />
-          </span>
+          <SlotText
+            text={ch}
+            direction={direction}
+            spinPool={spinPool}
+            randomSpin={randomSpin}
+            style={style}
+          />
         );
       }
 
@@ -518,6 +735,7 @@
         locales = "en-US",
         suffix = "",
         direction = "both",
+        randomSpin = false,
         style,
       }) {
         const formatted =
@@ -525,7 +743,12 @@
             ? value
             : new Intl.NumberFormat(locales, format).format(value);
         return (
-          <SlotText text={formatted + suffix} direction={direction} style={style} />
+          <SlotText
+            text={formatted + suffix}
+            direction={direction}
+            randomSpin={randomSpin}
+            style={style}
+          />
         );
       }
 
@@ -534,32 +757,42 @@
         en: {
           lang: "中文",
           tagline:
-            "Stock-Events-style slot-machine rolls for numbers, letters, and text in React. Dependency-free, accessible, reduced-motion aware.",
+            "Slot-machine-style rolls for numbers, letters, and text in React. Dependency-free, accessible, reduced-motion aware.",
           theme: "Theme",
           direction: "Direction",
           dir: { both: "Both", up: "Up", down: "Down" },
+          randomSpin: "Random spin",
+          onOff: { off: "Off", on: "On" },
+          liveDemo: "Live Demo",
+          movieAlt: "SlotNumber rolling through currency values like a slot machine",
+          movieCaption: "SlotNumber in motion — each digit is its own reel.",
           numberEyebrow: "SlotNumber",
           numberCtx: "Any number type — currency, percent, compact, negatives — via Intl.NumberFormat. Digits roll; symbols hold.",
           letterEyebrow: "SlotLetter",
           letterCtx: "A single character rolling through its alphabet, wrapping around.",
           textEyebrow: "SlotText",
-          textCtx: "Any script — Latin, CJK, emoji, right-to-left. Each grapheme rolls; spacing stays natural.",
+          textCtx: "Any script — Latin, Japanese, Traditional Chinese. Each grapheme rolls; spacing stays natural.",
           install: "Install",
           usage: "Usage",
         },
         zh: {
           lang: "EN",
           tagline:
-            "為 React 打造的拉霸式數字滾動效果，靈感來自 Stock Events。零依賴、可存取、並支援減少動態偏好。",
+            "為 React 打造的拉霸機式數字滾動效果。零依賴、可存取、並支援減少動態偏好。",
           theme: "主題",
           direction: "方向",
           dir: { both: "雙向", up: "向上", down: "向下" },
+          randomSpin: "隨機滾動",
+          onOff: { off: "關", on: "開" },
+          liveDemo: "即時示範",
+          movieAlt: "SlotNumber 像拉霸機一樣滾動貨幣數字",
+          movieCaption: "SlotNumber 動態示範——每個數字都是獨立的滾輪。",
           numberEyebrow: "SlotNumber",
           numberCtx: "任何數字類型——貨幣、百分比、精簡格式、負數——透過 Intl.NumberFormat。數字滾動，符號不動。",
           letterEyebrow: "SlotLetter",
           letterCtx: "單一字元在字母表中循環滾動。",
           textEyebrow: "SlotText",
-          textCtx: "任何文字——拉丁、中日韓、表情符號、由右至左。每個字元各自滾動，排版自然。",
+          textCtx: "任何文字——拉丁、日文、繁體中文。每個字元各自滾動，排版自然。",
           install: "安裝",
           usage: "用法",
         },
@@ -575,9 +808,10 @@
 
       const NUMBERS = [1234, 13190, 597, 5970000, 81293, 42];
       const LETTERS = ["A", "Q", "Z", "M", "E", "R", "S"];
-      // Mixed scripts, emoji, and a right-to-left phrase to show SlotText handles
-      // any text and writing direction.
-      const WORDS = ["JACKPOT", "WINNER", "777 GOLD", "東京タワー", "שלום עולם", "🍒🔔💎"];
+      // English mode mixes Latin, Japanese, and Traditional Chinese; Mandarin
+      // mode spins through everyday Traditional Chinese words.
+      const WORDS_EN = ["VOYAGE", "QUARTZ", "GARDEN", "東京タワー", "臺灣"];
+      const WORDS_ZH = ["春天", "圖書館", "海洋", "音樂會", "故宮"];
       const PAUSE = 1900;
 
       function useCycle(values) {
@@ -589,7 +823,7 @@
           );
           return () => clearInterval(id);
         }, [values.length]);
-        return values[i];
+        return values[i % values.length];
       }
 
       function DirectionControl({ value, onChange, t }) {
@@ -613,7 +847,38 @@
         );
       }
 
-      function DemoCard({ eyebrow, context, dir, setDir, t, usage, children }) {
+      function ToggleControl({ value, onChange, t }) {
+        return (
+          <div>
+            <span className="seg-label">{t.randomSpin}</span>
+            <div className="seg" role="group" aria-label={t.randomSpin}>
+              {[false, true].map((v) => (
+                <button
+                  key={String(v)}
+                  type="button"
+                  className={"seg-btn" + (value === v ? " active" : "")}
+                  aria-pressed={value === v}
+                  onClick={() => onChange(v)}
+                >
+                  {v ? t.onOff.on : t.onOff.off}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      }
+
+      function DemoCard({
+        eyebrow,
+        context,
+        dir,
+        setDir,
+        randomSpin,
+        setRandomSpin,
+        t,
+        usage,
+        children,
+      }) {
         const tipId = "tip-" + eyebrow;
         return (
           <section className="card">
@@ -638,7 +903,10 @@
             </div>
             <div className="hero">{children}</div>
             <p className="context">{context}</p>
-            <DirectionControl value={dir} onChange={setDir} t={t} />
+            <div className="controls">
+              <DirectionControl value={dir} onChange={setDir} t={t} />
+              <ToggleControl value={randomSpin} onChange={setRandomSpin} t={t} />
+            </div>
           </section>
         );
       }
@@ -664,6 +932,9 @@
         const [numDir, setNumDir] = useState("both");
         const [letterDir, setLetterDir] = useState("both");
         const [textDir, setTextDir] = useState("both");
+        const [numRandom, setNumRandom] = useState(false);
+        const [letterRandom, setLetterRandom] = useState(false);
+        const [textRandom, setTextRandom] = useState(false);
 
         useEffect(() => {
           document.documentElement.setAttribute("data-theme", theme);
@@ -675,7 +946,7 @@
         const t = STRINGS[lang];
         const numValue = useCycle(NUMBERS);
         const letterValue = useCycle(LETTERS);
-        const textValue = useCycle(WORDS);
+        const textValue = useCycle(lang === "zh" ? WORDS_ZH : WORDS_EN);
 
         return (
           <React.Fragment>
@@ -704,11 +975,27 @@
               </div>
             </header>
 
+            <figure className="movie">
+              <img
+                src="assets/slotnumber.webp"
+                alt={t.movieAlt}
+                width="760"
+                height="280"
+                loading="lazy"
+                decoding="async"
+              />
+              <figcaption>{t.movieCaption}</figcaption>
+            </figure>
+
+            <h2 className="section">{t.liveDemo}</h2>
+
             <DemoCard
               eyebrow={t.numberEyebrow}
               context={t.numberCtx}
               dir={numDir}
               setDir={setNumDir}
+              randomSpin={numRandom}
+              setRandomSpin={setNumRandom}
               usage={USAGE.number}
               t={t}
             >
@@ -720,18 +1007,8 @@
                   maximumFractionDigits: 0,
                 }}
                 direction={numDir}
+                randomSpin={numRandom}
               />
-            </DemoCard>
-
-            <DemoCard
-              eyebrow={t.letterEyebrow}
-              context={t.letterCtx}
-              dir={letterDir}
-              setDir={setLetterDir}
-              usage={USAGE.letter}
-              t={t}
-            >
-              <SlotLetter char={letterValue} direction={letterDir} />
             </DemoCard>
 
             <DemoCard
@@ -739,10 +1016,29 @@
               context={t.textCtx}
               dir={textDir}
               setDir={setTextDir}
+              randomSpin={textRandom}
+              setRandomSpin={setTextRandom}
               usage={USAGE.text}
               t={t}
             >
-              <SlotText text={textValue} direction={textDir} />
+              <SlotText text={textValue} direction={textDir} randomSpin={textRandom} />
+            </DemoCard>
+
+            <DemoCard
+              eyebrow={t.letterEyebrow}
+              context={t.letterCtx}
+              dir={letterDir}
+              setDir={setLetterDir}
+              randomSpin={letterRandom}
+              setRandomSpin={setLetterRandom}
+              usage={USAGE.letter}
+              t={t}
+            >
+              <SlotLetter
+                char={letterValue}
+                direction={letterDir}
+                randomSpin={letterRandom}
+              />
             </DemoCard>
 
             <footer className="site">

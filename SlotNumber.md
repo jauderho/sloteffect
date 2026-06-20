@@ -1,10 +1,10 @@
 # SlotEffect — slot-machine digit rolls for hero numbers
 
-A small, dependency-free React effect that animates numeric values the way the
-iOS *Stock Events* app does: when a value changes, **each digit is its own
-slot-machine reel** that rolls to the new digit **up or down at random**,
-wrapping through 0–9, with a springy settle. Non-digit characters (`$`, `,`,
-`.`, `%`, `NT$`, `/yr`, unit suffixes…) stay put.
+A small, dependency-free React effect that animates numeric values like a slot
+machine: when a value changes, **each digit is its own slot-machine reel** that
+rolls to the new digit **up or down at random**, wrapping through 0–9, with a
+springy settle. Non-digit characters (`$`, `,`, `.`, `%`, `NT$`, `/yr`, unit
+suffixes…) stay put.
 
 It works for **any numeric string** — currency, percentages, compact notation
 (`$5.97M`), durations, counts — because the reels are driven by the *formatted

@@ -1,6 +1,6 @@
 # sloteffect
 
-> Stock-Events-style **slot-machine rolls** for numbers, letters, and text in
+> **Slot-machine-style rolls** for numbers, letters, and text in
 > React. Each digit or character is its own reel that rolls **up or down** to its
 > new value, wrapping through the charset, with a springy settle.
 
