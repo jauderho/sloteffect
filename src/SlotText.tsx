@@ -1,73 +1,66 @@
 /**
  * sloteffect — SlotText.
  *
- * Animates any string: each letter rolls through its case's alphabet, each
- * digit rolls through 0–9, and every other character (spaces, punctuation,
- * symbols) stays static. Reels are right-anchored by key so trailing positions
- * keep their instances — and thus animate — as the string grows or shrinks.
+ * Animates any string in any script. The text is split into grapheme clusters
+ * (so emoji, combining marks, and surrogate pairs stay intact), and each cluster
+ * is a slot cell: digits and same-case Latin letters roll through their charset,
+ * everything else flips cleanly to its new glyph. Resting cells use normal text
+ * layout, so spacing, kerning, and bidirectional (LTR/RTL) ordering are correct.
  */
 import type { CSSProperties } from "react";
-import { DIGITS, LOWER, type SlotDirection, UPPER } from "./reel";
-import { Reel } from "./SlotReel";
+import type { SlotDirection } from "./reel";
+import { SlotCell } from "./SlotCell";
 
-const CELL: CSSProperties = {
-  display: "block",
-  height: "1em",
-  lineHeight: "1em",
-};
+/** Split a string into grapheme clusters (falls back to code points). */
+function segment(text: string): string[] {
+  if (typeof Intl !== "undefined" && "Segmenter" in Intl) {
+    const seg = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+    return Array.from(seg.segment(text), (s) => s.segment);
+  }
+  return Array.from(text);
+}
 
 export interface SlotTextProps {
   /** The string (or number) to display. */
-  text: string | number;
-  /** Roll direction; defaults to `both` (random per reel). */
+  text: string | number | bigint;
+  /** Roll direction; defaults to `both` (random per cell). */
   direction?: SlotDirection;
-  /** Optional class on the inline-flex container. */
+  /**
+   * Text direction. `auto` (default) infers LTR/RTL from the content; pass
+   * `ltr`/`rtl` to force it.
+   */
+  dir?: "auto" | "ltr" | "rtl";
+  /** Optional class on the container. */
   className?: string;
   /** Optional inline style merged onto the container. */
   style?: CSSProperties;
 }
 
-/** The charset a character belongs to, or `null` if it should stay static. */
-function charsetFor(ch: string): string | null {
-  if (ch >= "0" && ch <= "9") return DIGITS;
-  if (ch >= "A" && ch <= "Z") return UPPER;
-  if (ch >= "a" && ch <= "z") return LOWER;
-  return null;
-}
-
 export function SlotText({
   text,
   direction = "both",
+  dir = "auto",
   className,
   style,
 }: SlotTextProps) {
   const label = String(text);
-  const chars = Array.from(label);
-  const n = chars.length;
+  const cells = segment(label);
+  const n = cells.length;
 
   return (
     <span
       role="img"
       aria-label={label}
+      dir={dir}
       className={className}
-      style={{ display: "inline-flex", whiteSpace: "pre", ...style }}
+      style={{ display: "inline-block", whiteSpace: "pre", ...style }}
     >
-      {chars.map((ch, i) => {
-        const k = n - i; // right-anchored keys: trailing reels persist
-        const charset = charsetFor(ch);
-        return charset ? (
-          <Reel
-            key={`r${k}`}
-            charset={charset}
-            glyph={ch}
-            direction={direction}
-          />
-        ) : (
-          <span aria-hidden="true" key={`s${k}${ch}`} style={CELL}>
-            {ch}
-          </span>
-        );
-      })}
+      {cells.map((g, i) => (
+        // Right-anchored keys: trailing cells keep their identity (and roll)
+        // as the string grows or shrinks.
+        // biome-ignore lint/suspicious/noArrayIndexKey: right-anchored key is deliberate
+        <SlotCell key={`c${n - i}`} glyph={g} direction={direction} />
+      ))}
     </span>
   );
 }

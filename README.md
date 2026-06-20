@@ -9,8 +9,14 @@
 - **Three components** — [`SlotNumber`](#slotnumber), [`SlotLetter`](#slotletter),
   [`SlotText`](#slottext).
 - **Directional** — `direction="both"` (random per reel, default), `"up"`, or `"down"`.
-- **Accessible** — the formatted value is the `aria-label`; reels are
-  presentational; `prefers-reduced-motion` snaps instantly.
+- **Lean at rest** — a character is a single glyph until it changes; the rolling
+  strip is built only for the duration of a transition, then removed. Unchanged
+  cells never animate, so a hero number costs a handful of DOM nodes, not hundreds.
+- **Any text, any direction** — `SlotText` segments by grapheme (emoji, combining
+  marks, surrogate pairs stay intact), keeps natural spacing/kerning, and orders
+  LTR or RTL automatically.
+- **Accessible** — the value is the `aria-label`; reels are presentational;
+  `prefers-reduced-motion` snaps instantly.
 - **Tiny** — ~5 KB ESM, tree-shakeable, ships ESM + CJS + types.
 
 **[▶ Live demo](https://jauderho.github.io/sloteffect/)**
@@ -49,17 +55,20 @@ Place a component inside a styled element — it inherits `font-family`,
 
 ### `SlotNumber`
 
-Formats a number with `Intl.NumberFormat` (plus an optional suffix) and rolls the
-digits. Separators, currency symbols, and the suffix stay static.
+Formats a value with `Intl.NumberFormat` (plus an optional suffix) and rolls the
+digits. Separators, currency symbols, and the suffix stay static. Accepts any
+number (decimals, negatives, `NaN`/`Infinity`), a `bigint`, or an
+already-formatted `string` (passed through verbatim).
 
 ```tsx
 <SlotNumber value={0.813} format={{ style: "percent", minimumFractionDigits: 1 }} />   // 81.3%
 <SlotNumber value={surcharge} format={{ style: "currency", currency: "USD" }} suffix="/yr" />
+<SlotNumber value={9007199254740993n} />                                               // bigint
 ```
 
 | Prop | Type | Default | Description |
 |---|---|---|---|
-| `value` | `number` | — | The numeric value. |
+| `value` | `number \| bigint \| string` | — | Number/bigint to format, or a preformatted string. |
 | `format` | `Intl.NumberFormatOptions` | — | Style, currency, fraction digits, etc. |
 | `locales` | `string \| string[]` | `"en-US"` | BCP 47 locale(s). |
 | `suffix` | `string` | `""` | Static text appended after the number (e.g. `"/yr"`). |
@@ -83,20 +92,29 @@ around. Non-letters render static.
 
 ### `SlotText`
 
-Animates any string. Each letter rolls through its case's alphabet, each digit
-rolls through `0–9`, and every other character (spaces, punctuation, symbols)
-stays static. Reels are right-anchored so trailing positions keep rolling as the
-string grows or shrinks.
+Animates any string in any script. The text is split into grapheme clusters, and
+each cluster is a slot cell: digits and same-case Latin letters roll through their
+charset, while every other glyph (other scripts, emoji, punctuation) flips cleanly
+to its new value. At rest each cell is normal text, so spacing, kerning, and
+LTR/RTL ordering are correct; cells are right-anchored so trailing positions keep
+rolling as the string grows or shrinks.
 
 ```tsx
 <SlotText text="Level 12" direction="down" />
+<SlotText text="東京タワー" />          // CJK
+<SlotText text="שלום עולם" />          // right-to-left, auto-detected
 ```
 
 | Prop | Type | Default | Description |
 |---|---|---|---|
-| `text` | `string \| number` | — | The string to display. |
+| `text` | `string \| number \| bigint` | — | The string to display. |
 | `direction` | `"both" \| "up" \| "down"` | `"both"` | Roll direction. |
+| `dir` | `"auto" \| "ltr" \| "rtl"` | `"auto"` | Writing direction; `auto` infers it from the content. |
 | `className` / `style` | — | — | Passed to the container. |
+
+> **Note on connected scripts.** Because each grapheme animates in its own cell,
+> scripts with contextual joining (e.g. Arabic) render in isolated forms while
+> rolling. Latin, CJK, Hebrew, emoji, and digits are unaffected.
 
 ---
 
@@ -123,8 +141,10 @@ Every component accepts `direction`:
 - **Reduced motion.** Under `prefers-reduced-motion: reduce` the reels snap to the
   final value with no animation. (Headless/preview browsers often report reduced
   motion — stub `matchMedia` to observe the roll in tests.)
-- **Latin digits.** The reels roll through Latin `0–9` / `A–Z` / `a–z`. For other
-  numeral systems, format with the `nu-latn` numbering system.
+- **Ordered vs. flip.** Latin `0–9` / `A–Z` / `a–z` roll *through* their charset
+  (the authentic reel). Any other glyph pair (other scripts, emoji, cross-charset)
+  flips directly from old to new. For non-Latin numerals that should roll like
+  digits, format with the `nu-latn` numbering system.
 
 ---
 

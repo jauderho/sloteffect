@@ -1,19 +1,20 @@
 /**
  * sloteffect — SlotLetter.
  *
- * Animates a single character as a slot reel rolling through its case's
- * alphabet (A–Z or a–z), wrapping around. Non-letter characters render static.
+ * Animates a single character as a slot reel. Latin letters roll through their
+ * case's alphabet (A–Z / a–z) and digits through 0–9, both wrapping around; any
+ * other glyph flips cleanly to its new value.
  */
 import type { CSSProperties } from "react";
-import { LOWER, type SlotDirection, UPPER } from "./reel";
-import { Reel } from "./SlotReel";
+import type { SlotDirection } from "./reel";
+import { SlotCell } from "./SlotCell";
 
 export interface SlotLetterProps {
-  /** The character to display. Only A–Z / a–z roll; others stay static. */
+  /** The character to display. */
   char: string;
   /** Roll direction; defaults to `both` (random per transition). */
   direction?: SlotDirection;
-  /** Optional class on the inline-flex container. */
+  /** Optional class on the container. */
   className?: string;
   /** Optional inline style merged onto the container. */
   style?: CSSProperties;
@@ -26,26 +27,14 @@ export function SlotLetter({
   style,
 }: SlotLetterProps) {
   const ch = Array.from(String(char))[0] ?? "";
-  const charset =
-    ch >= "A" && ch <= "Z" ? UPPER : ch >= "a" && ch <= "z" ? LOWER : null;
-
   return (
     <span
       role="img"
       aria-label={ch}
       className={className}
-      style={{ display: "inline-flex", whiteSpace: "pre", ...style }}
+      style={{ display: "inline-block", ...style }}
     >
-      {charset ? (
-        <Reel charset={charset} glyph={ch} direction={direction} />
-      ) : (
-        <span
-          aria-hidden="true"
-          style={{ display: "block", height: "1em", lineHeight: "1em" }}
-        >
-          {ch}
-        </span>
-      )}
+      <SlotCell glyph={ch} direction={direction} />
     </span>
   );
 }

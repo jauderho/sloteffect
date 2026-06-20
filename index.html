@@ -134,13 +134,102 @@
         padding: clamp(20px, 4vw, 28px);
         margin-bottom: 20px;
       }
+      .card-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin: 0 0 14px;
+      }
       .eyebrow {
         font-size: 11px;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.14em;
         color: var(--gold);
-        margin: 0 0 14px;
+        margin: 0;
+      }
+      .help {
+        position: relative;
+      }
+      .help-btn {
+        width: 44px;
+        height: 44px;
+        min-height: 44px;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        cursor: help;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .help-dot {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        border: 1px solid var(--border2);
+        background: var(--surface2);
+        color: var(--text3);
+        font-size: 13px;
+        font-weight: 700;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: color 0.15s ease, border-color 0.15s ease;
+      }
+      .help-btn:hover .help-dot,
+      .help-btn:focus-visible .help-dot {
+        color: var(--gold);
+        border-color: var(--gold);
+      }
+      .tip {
+        position: absolute;
+        right: 0;
+        top: calc(100% - 6px);
+        z-index: 5;
+        width: max-content;
+        max-width: min(360px, 78vw);
+        background: var(--surface);
+        border: 1px solid var(--border2);
+        border-radius: 10px;
+        padding: 12px 14px;
+        font-size: 12.5px;
+        line-height: 1.55;
+        color: var(--text2);
+        white-space: normal;
+        opacity: 0;
+        visibility: hidden;
+        transform: translateY(-4px);
+        transition: opacity 0.15s ease, transform 0.15s ease,
+          visibility 0.15s ease;
+      }
+      code {
+        font-family: inherit;
+      }
+      .tip-code {
+        display: block;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 10px;
+        color: var(--text);
+        word-break: break-word;
+      }
+      .tip-label {
+        display: block;
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--text3);
+        margin: 0 0 8px;
+      }
+      .help:hover .tip,
+      .help:focus-within .tip {
+        opacity: 1;
+        visibility: visible;
+        transform: translateY(0);
       }
       .hero {
         font-family: "Newsreader", "Noto Serif TC", serif;
@@ -245,137 +334,180 @@
       const DIGITS = "0123456789";
       const UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
       const LOWER = "abcdefghijklmnopqrstuvwxyz";
+      const ROW_H = 1.3;
       const SLOT_EASING =
         "linear(0, 0.0548, 0.1842, 0.3463, 0.5118, 0.6628, 0.7895, 0.8885, 0.9605, " +
         "1.0086, 1.0372, 1.051, 1.0542, 1.0508, 1.0435, 1.0346, 1.0256, 1.0176, " +
         "1.0108, 1.0056, 1.0018, 0.9993, 0.9979, 0.9972, 0.9971, 1)";
-      const CELL = { display: "block", height: "1em", lineHeight: "1em" };
 
-      function resolveTargetIndex(fromIdx, toIdx, length, direction, coin) {
-        const rollUp = direction === "both" ? coin < 0.5 : direction === "up";
-        let target = toIdx;
-        if (rollUp && target <= fromIdx) target += length;
-        if (!rollUp && target >= fromIdx) target -= length;
-        return target;
-      }
-      const rollDuration = () => 750 + Math.random() * 300;
-
-      function Reel({ charset, glyph, direction }) {
-        const stripRef = useRef(null);
-        const length = charset.length;
-        const index = charset.indexOf(glyph);
-        const prevRef = useRef(index);
-        const strip = charset.repeat(3);
-
-        useLayoutEffect(() => {
-          const el = stripRef.current;
-          const from = prevRef.current;
-          const to = index;
-          prevRef.current = to;
-          if (!el || to < 0) return;
-
-          const reduce =
-            window.matchMedia &&
-            window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-          if (from === to || from < 0 || reduce) {
-            el.style.transform = `translateY(${-(length + to)}em)`;
-            return;
-          }
-
-          const fromIdx = length + from;
-          const toIdx = resolveTargetIndex(
-            fromIdx,
-            length + to,
-            length,
-            direction,
-            Math.random(),
-          );
-
-          for (const a of el.getAnimations()) a.cancel();
-          el.style.transform = `translateY(${-toIdx}em)`;
-          const anim = el.animate(
-            [
-              { transform: `translateY(${-fromIdx}em)` },
-              { transform: `translateY(${-toIdx}em)` },
-            ],
-            { duration: rollDuration(), easing: SLOT_EASING },
-          );
-          anim.onfinish = () => {
-            el.style.transform = `translateY(${-(length + to)}em)`;
-          };
-        }, [index, length, direction]);
-
-        return (
-          <span
-            aria-hidden="true"
-            style={{ display: "block", overflow: "hidden", height: "1em" }}
-          >
-            <span
-              ref={stripRef}
-              style={{
-                display: "block",
-                transform: `translateY(${-(length + Math.max(index, 0))}em)`,
-              }}
-            >
-              {Array.from(strip).map((ch, i) => (
-                <span key={i} style={CELL}>
-                  {ch}
-                </span>
-              ))}
-            </span>
-          </span>
-        );
-      }
-
-      function charsetFor(ch) {
+      function charsetOf(ch) {
         if (ch >= "0" && ch <= "9") return DIGITS;
         if (ch >= "A" && ch <= "Z") return UPPER;
         if (ch >= "a" && ch <= "z") return LOWER;
         return null;
       }
+      function sharedCharset(from, to) {
+        const cs = charsetOf(from);
+        return cs && cs === charsetOf(to) ? cs : null;
+      }
+      function forwardPath(cs, from, to) {
+        const len = cs.length, fi = cs.indexOf(from), ti = cs.indexOf(to);
+        const steps = (ti - fi + len) % len || len;
+        const rows = [];
+        for (let k = 0; k <= steps; k++) rows.push(cs[(fi + k) % len]);
+        return rows;
+      }
+      function backwardPath(cs, from, to) {
+        const len = cs.length, fi = cs.indexOf(from), ti = cs.indexOf(to);
+        const steps = (fi - ti + len) % len || len;
+        const rows = [];
+        for (let k = 0; k <= steps; k++) rows.push(cs[(fi - k + len) % len]);
+        return rows;
+      }
+      function buildRoll(from, to, direction, coin) {
+        const rollUp = direction === "both" ? coin < 0.5 : direction === "up";
+        const cs = sharedCharset(from, to);
+        if (rollUp) {
+          const rows = cs ? forwardPath(cs, from, to) : [from, to];
+          return { rows, startRow: 0, endRow: rows.length - 1 };
+        }
+        const rows = (cs ? backwardPath(cs, from, to) : [from, to]).reverse();
+        return { rows, startRow: rows.length - 1, endRow: 0 };
+      }
+      const rollDuration = () => 750 + Math.random() * 300;
+      const prefersReducedMotion = () =>
+        window.matchMedia &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-      function SlotText({ text, direction = "both", style }) {
+      const HOST_STYLE = {
+        position: "relative",
+        display: "inline-block",
+        overflow: "hidden",
+        height: ROW_H + "em",
+        lineHeight: 1,
+        verticalAlign: "middle",
+        whiteSpace: "pre",
+      };
+      const GLYPH_STYLE = {
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        height: ROW_H + "em",
+        lineHeight: 1,
+      };
+      const ROW_CSS =
+        "display:flex;align-items:center;justify-content:center;height:" +
+        ROW_H +
+        "em;line-height:1";
+
+      // At rest a cell is one naturally-sized glyph; the rolling strip is built
+      // imperatively only during a transition, then torn down.
+      function SlotCell({ glyph, direction }) {
+        const hostRef = useRef(null);
+        const glyphRef = useRef(null);
+        const rollerRef = useRef(null);
+        const prevRef = useRef(glyph);
+
+        useLayoutEffect(() => {
+          const from = prevRef.current;
+          const to = glyph;
+          prevRef.current = to;
+          const host = hostRef.current;
+          const rest = glyphRef.current;
+          if (!host || !rest) return;
+
+          const clear = () => {
+            const roller = rollerRef.current;
+            if (roller) {
+              for (const a of roller.getAnimations()) a.cancel();
+              roller.remove();
+              rollerRef.current = null;
+            }
+            rest.style.visibility = "";
+          };
+
+          if (from === to || prefersReducedMotion()) {
+            clear();
+            return;
+          }
+          clear();
+
+          const { rows, startRow, endRow } = buildRoll(
+            from,
+            to,
+            direction,
+            Math.random(),
+          );
+          const roller = document.createElement("span");
+          roller.setAttribute("aria-hidden", "true");
+          roller.style.cssText =
+            "position:absolute;left:0;top:0;width:100%;will-change:transform";
+          for (const ch of rows) {
+            const row = document.createElement("span");
+            row.style.cssText = ROW_CSS;
+            row.textContent = ch;
+            roller.appendChild(row);
+          }
+          rest.style.visibility = "hidden";
+          host.appendChild(roller);
+          rollerRef.current = roller;
+
+          const at = (i) => `translateY(${-(i * ROW_H)}em)`;
+          roller.style.transform = at(endRow);
+          const anim = roller.animate(
+            [{ transform: at(startRow) }, { transform: at(endRow) }],
+            { duration: rollDuration(), easing: SLOT_EASING },
+          );
+          anim.onfinish = () => {
+            if (rollerRef.current === roller) clear();
+          };
+          return clear;
+        }, [glyph, direction]);
+
+        return (
+          <span ref={hostRef} style={HOST_STYLE}>
+            <span ref={glyphRef} style={GLYPH_STYLE}>
+              {glyph}
+            </span>
+          </span>
+        );
+      }
+
+      function segment(text) {
+        if (typeof Intl !== "undefined" && "Segmenter" in Intl) {
+          const seg = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+          return Array.from(seg.segment(text), (s) => s.segment);
+        }
+        return Array.from(text);
+      }
+
+      function SlotText({ text, direction = "both", dir = "auto", style }) {
         const label = String(text);
-        const chars = Array.from(label);
-        const n = chars.length;
+        const cells = segment(label);
+        const n = cells.length;
         return (
           <span
             role="img"
             aria-label={label}
-            style={{ display: "inline-flex", whiteSpace: "pre", ...style }}
+            dir={dir}
+            style={{ display: "inline-block", whiteSpace: "pre", ...style }}
           >
-            {chars.map((ch, i) => {
-              const k = n - i;
-              const cs = charsetFor(ch);
-              return cs ? (
-                <Reel key={`r${k}`} charset={cs} glyph={ch} direction={direction} />
-              ) : (
-                <span aria-hidden="true" key={`s${k}${ch}`} style={CELL}>
-                  {ch}
-                </span>
-              );
-            })}
+            {cells.map((g, i) => (
+              <SlotCell key={`c${n - i}`} glyph={g} direction={direction} />
+            ))}
           </span>
         );
       }
 
       function SlotLetter({ char, direction = "both", style }) {
         const ch = Array.from(String(char))[0] ?? "";
-        const cs =
-          ch >= "A" && ch <= "Z" ? UPPER : ch >= "a" && ch <= "z" ? LOWER : null;
         return (
           <span
             role="img"
             aria-label={ch}
-            style={{ display: "inline-flex", whiteSpace: "pre", ...style }}
+            style={{ display: "inline-block", ...style }}
           >
-            {cs ? (
-              <Reel charset={cs} glyph={ch} direction={direction} />
-            ) : (
-              <span aria-hidden="true" style={CELL}>
-                {ch}
-              </span>
-            )}
+            <SlotCell glyph={ch} direction={direction} />
           </span>
         );
       }
@@ -388,9 +520,13 @@
         direction = "both",
         style,
       }) {
-        const text =
-          new Intl.NumberFormat(locales, format).format(value) + suffix;
-        return <SlotText text={text} direction={direction} style={style} />;
+        const formatted =
+          typeof value === "string"
+            ? value
+            : new Intl.NumberFormat(locales, format).format(value);
+        return (
+          <SlotText text={formatted + suffix} direction={direction} style={style} />
+        );
       }
 
       // ---- demo plumbing ----------------------------------------------------
@@ -403,12 +539,13 @@
           direction: "Direction",
           dir: { both: "Both", up: "Up", down: "Down" },
           numberEyebrow: "SlotNumber",
-          numberCtx: "Currency, percent, compact — any Intl.NumberFormat. Digits roll; symbols hold.",
+          numberCtx: "Any number type — currency, percent, compact, negatives — via Intl.NumberFormat. Digits roll; symbols hold.",
           letterEyebrow: "SlotLetter",
           letterCtx: "A single character rolling through its alphabet, wrapping around.",
           textEyebrow: "SlotText",
-          textCtx: "Each letter and digit is its own reel; spaces and symbols stay put.",
+          textCtx: "Any script — Latin, CJK, emoji, right-to-left. Each grapheme rolls; spacing stays natural.",
           install: "Install",
+          usage: "Usage",
         },
         zh: {
           lang: "EN",
@@ -418,18 +555,29 @@
           direction: "方向",
           dir: { both: "雙向", up: "向上", down: "向下" },
           numberEyebrow: "SlotNumber",
-          numberCtx: "貨幣、百分比、精簡格式——任何 Intl.NumberFormat。數字滾動，符號不動。",
+          numberCtx: "任何數字類型——貨幣、百分比、精簡格式、負數——透過 Intl.NumberFormat。數字滾動，符號不動。",
           letterEyebrow: "SlotLetter",
           letterCtx: "單一字元在字母表中循環滾動。",
           textEyebrow: "SlotText",
-          textCtx: "每個字母與數字各自為一個轉軸；空格與符號保持靜止。",
+          textCtx: "任何文字——拉丁、中日韓、表情符號、由右至左。每個字元各自滾動，排版自然。",
           install: "安裝",
+          usage: "用法",
         },
+      };
+
+      // Usage snippets shown in each card's "?" tooltip (code, not localized).
+      const USAGE = {
+        number:
+          '<SlotNumber value={1234} format={{ style: "currency", currency: "USD" }} direction="up" />',
+        letter: '<SlotLetter char="Q" direction="down" />',
+        text: '<SlotText text="東京タワー" direction="both" />',
       };
 
       const NUMBERS = [1234, 13190, 597, 5970000, 81293, 42];
       const LETTERS = ["A", "Q", "Z", "M", "E", "R", "S"];
-      const WORDS = ["JACKPOT", "WINNER", "CHERRY", "SLOT 7", "BONUS"];
+      // Mixed scripts, emoji, and a right-to-left phrase to show SlotText handles
+      // any text and writing direction.
+      const WORDS = ["JACKPOT", "WINNER", "777 GOLD", "東京タワー", "שלום עולם", "🍒🔔💎"];
       const PAUSE = 1900;
 
       function useCycle(values) {
@@ -465,10 +613,29 @@
         );
       }
 
-      function DemoCard({ eyebrow, context, dir, setDir, t, children }) {
+      function DemoCard({ eyebrow, context, dir, setDir, t, usage, children }) {
+        const tipId = "tip-" + eyebrow;
         return (
           <section className="card">
-            <p className="eyebrow">{eyebrow}</p>
+            <div className="card-head">
+              <p className="eyebrow">{eyebrow}</p>
+              <span className="help">
+                <button
+                  type="button"
+                  className="help-btn"
+                  aria-label={t.usage}
+                  aria-describedby={tipId}
+                >
+                  <span className="help-dot" aria-hidden="true">
+                    ?
+                  </span>
+                </button>
+                <span className="tip" role="tooltip" id={tipId}>
+                  <span className="tip-label">{t.usage}</span>
+                  <code className="tip-code">{usage}</code>
+                </span>
+              </span>
+            </div>
             <div className="hero">{children}</div>
             <p className="context">{context}</p>
             <DirectionControl value={dir} onChange={setDir} t={t} />
@@ -542,6 +709,7 @@
               context={t.numberCtx}
               dir={numDir}
               setDir={setNumDir}
+              usage={USAGE.number}
               t={t}
             >
               <SlotNumber
@@ -560,6 +728,7 @@
               context={t.letterCtx}
               dir={letterDir}
               setDir={setLetterDir}
+              usage={USAGE.letter}
               t={t}
             >
               <SlotLetter char={letterValue} direction={letterDir} />
@@ -570,6 +739,7 @@
               context={t.textCtx}
               dir={textDir}
               setDir={setTextDir}
+              usage={USAGE.text}
               t={t}
             >
               <SlotText text={textValue} direction={textDir} />

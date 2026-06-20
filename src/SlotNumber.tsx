@@ -11,8 +11,12 @@ import type { SlotDirection } from "./reel";
 import { SlotText } from "./SlotText";
 
 export interface SlotNumberProps {
-  /** The numeric value to display. */
-  value: number;
+  /**
+   * The value to display. Accepts any number (integers, decimals, negatives,
+   * `NaN`/`Infinity`), a `bigint`, or an already-formatted string (passed
+   * through verbatim).
+   */
+  value: number | bigint | string;
   /** `Intl.NumberFormat` options (style, currency, fraction digits…). */
   format?: Intl.NumberFormatOptions;
   /** BCP 47 locale(s) for formatting. Defaults to `"en-US"`. */
@@ -36,7 +40,11 @@ export function SlotNumber({
   className,
   style,
 }: SlotNumberProps) {
-  const text = new Intl.NumberFormat(locales, format).format(value) + suffix;
+  const formatted =
+    typeof value === "string"
+      ? value
+      : new Intl.NumberFormat(locales, format).format(value);
+  const text = formatted + suffix;
   return (
     <SlotText
       text={text}
