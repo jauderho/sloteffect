@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>sloteffect — slot-machine rolls for React</title>
+    <meta
+      name="description"
+      content="Stock-Events-style slot-machine rolls for numbers, letters, and text in React. Dependency-free, accessible, reduced-motion aware."
+    />
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;1,400&family=Hanken+Grotesk:wght@400;500;600;700&family=Noto+Serif+TC:wght@400;500&family=Noto+Sans+TC:wght@400;500;600;700&display=swap");
+
+      :root[data-theme="dark"] {
+        --bg: #0a0b0d;
+        --surface: #15181d;
+        --surface2: #1b1f26;
+        --border: #262b34;
+        --border2: #333a45;
+        --text: #f4f3f0;
+        --text2: #b9bcc4;
+        --text3: #7e8390;
+        --gold: #d4b87a;
+        --gold-bg: rgba(212, 184, 122, 0.1);
+        --on-gold: #1a1408;
+        --good: #5ed6a4;
+      }
+      :root[data-theme="light"] {
+        --bg: #f7f4ee;
+        --surface: #ffffff;
+        --surface2: #f3efe6;
+        --border: #e2dccf;
+        --border2: #d4ccbb;
+        --text: #1a1814;
+        --text2: #4b4742;
+        --text3: #857f74;
+        --gold: #9a7b2e;
+        --gold-bg: rgba(154, 123, 46, 0.08);
+        --on-gold: #ffffff;
+        --good: #1f8a5b;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Hanken Grotesk", "Noto Sans TC", ui-sans-serif,
+          system-ui, sans-serif;
+        font-variant-numeric: tabular-nums;
+        -webkit-font-smoothing: antialiased;
+        line-height: 1.5;
+        transition: background 0.25s ease, color 0.25s ease;
+      }
+      :lang(zh) {
+        font-family: "Noto Sans TC", "Hanken Grotesk", ui-sans-serif,
+          system-ui, sans-serif;
+      }
+
+      .wrap {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: clamp(20px, 5vw, 48px) clamp(16px, 4vw, 28px) 64px;
+      }
+
+      header.site {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-bottom: clamp(28px, 6vw, 48px);
+      }
+      .wordmark {
+        font-family: "Newsreader", "Noto Serif TC", serif;
+        font-weight: 500;
+        font-size: clamp(28px, 5vw, 42px);
+        letter-spacing: -0.01em;
+        margin: 0;
+        line-height: 1.1;
+      }
+      .tagline {
+        color: var(--text2);
+        font-size: 14px;
+        margin: 6px 0 0;
+        max-width: 46ch;
+      }
+
+      .toolbar {
+        display: flex;
+        gap: 8px;
+      }
+      .icon-btn,
+      .lang-btn {
+        min-height: 44px;
+        min-width: 44px;
+        padding: 0 12px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        background: var(--surface2);
+        color: var(--text2);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        font: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.15s ease, color 0.15s ease,
+          border-color 0.15s ease;
+      }
+      .icon-btn:hover,
+      .lang-btn:hover {
+        border-color: var(--border2);
+        color: var(--text);
+      }
+      :focus-visible {
+        outline: 2px solid var(--gold);
+        outline-offset: 2px;
+      }
+
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-left: 3px solid var(--gold);
+        border-radius: 16px;
+        padding: clamp(20px, 4vw, 28px);
+        margin-bottom: 20px;
+      }
+      .eyebrow {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        color: var(--gold);
+        margin: 0 0 14px;
+      }
+      .hero {
+        font-family: "Newsreader", "Noto Serif TC", serif;
+        font-weight: 500;
+        font-size: clamp(40px, 11vw, 72px);
+        line-height: 1.2;
+        color: var(--text);
+        min-height: 1.2em;
+        display: flex;
+        align-items: center;
+      }
+      .context {
+        color: var(--text2);
+        font-size: 14px;
+        margin: 10px 0 18px;
+        min-height: 1.4em;
+      }
+
+      .seg {
+        display: inline-flex;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 4px;
+        gap: 4px;
+      }
+      .seg-btn {
+        min-height: 36px;
+        padding: 0 16px;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--text2);
+        font: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.15s ease, color 0.15s ease;
+      }
+      .seg-btn:hover {
+        color: var(--text);
+      }
+      .seg-btn.active {
+        background: var(--gold);
+        color: var(--on-gold);
+      }
+      .seg-label {
+        display: block;
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--text3);
+        margin: 0 0 8px;
+      }
+
+      footer.site {
+        margin-top: 40px;
+        padding-top: 20px;
+        border-top: 1px solid var(--border);
+        display: flex;
+        gap: 18px;
+        flex-wrap: wrap;
+        font-size: 13px;
+      }
+      footer.site a {
+        color: var(--text2);
+        text-decoration: none;
+        font-weight: 600;
+      }
+      footer.site a:hover {
+        color: var(--gold);
+      }
+
+      @media (max-width: 480px) {
+        .seg {
+          width: 100%;
+        }
+        .seg-btn {
+          flex: 1;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" class="wrap"></div>
+
+    <script
+      crossorigin
+      src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"
+    ></script>
+    <script
+      crossorigin
+      src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"
+    ></script>
+    <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
+
+    <script type="text/babel" data-presets="react">
+      const { useState, useEffect, useRef, useLayoutEffect } = React;
+
+      // ---- sloteffect (inline port of src/, kept in sync) -------------------
+      const DIGITS = "0123456789";
+      const UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+      const LOWER = "abcdefghijklmnopqrstuvwxyz";
+      const SLOT_EASING =
+        "linear(0, 0.0548, 0.1842, 0.3463, 0.5118, 0.6628, 0.7895, 0.8885, 0.9605, " +
+        "1.0086, 1.0372, 1.051, 1.0542, 1.0508, 1.0435, 1.0346, 1.0256, 1.0176, " +
+        "1.0108, 1.0056, 1.0018, 0.9993, 0.9979, 0.9972, 0.9971, 1)";
+      const CELL = { display: "block", height: "1em", lineHeight: "1em" };
+
+      function resolveTargetIndex(fromIdx, toIdx, length, direction, coin) {
+        const rollUp = direction === "both" ? coin < 0.5 : direction === "up";
+        let target = toIdx;
+        if (rollUp && target <= fromIdx) target += length;
+        if (!rollUp && target >= fromIdx) target -= length;
+        return target;
+      }
+      const rollDuration = () => 750 + Math.random() * 300;
+
+      function Reel({ charset, glyph, direction }) {
+        const stripRef = useRef(null);
+        const length = charset.length;
+        const index = charset.indexOf(glyph);
+        const prevRef = useRef(index);
+        const strip = charset.repeat(3);
+
+        useLayoutEffect(() => {
+          const el = stripRef.current;
+          const from = prevRef.current;
+          const to = index;
+          prevRef.current = to;
+          if (!el || to < 0) return;
+
+          const reduce =
+            window.matchMedia &&
+            window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+          if (from === to || from < 0 || reduce) {
+            el.style.transform = `translateY(${-(length + to)}em)`;
+            return;
+          }
+
+          const fromIdx = length + from;
+          const toIdx = resolveTargetIndex(
+            fromIdx,
+            length + to,
+            length,
+            direction,
+            Math.random(),
+          );
+
+          for (const a of el.getAnimations()) a.cancel();
+          el.style.transform = `translateY(${-toIdx}em)`;
+          const anim = el.animate(
+            [
+              { transform: `translateY(${-fromIdx}em)` },
+              { transform: `translateY(${-toIdx}em)` },
+            ],
+            { duration: rollDuration(), easing: SLOT_EASING },
+          );
+          anim.onfinish = () => {
+            el.style.transform = `translateY(${-(length + to)}em)`;
+          };
+        }, [index, length, direction]);
+
+        return (
+          <span
+            aria-hidden="true"
+            style={{ display: "block", overflow: "hidden", height: "1em" }}
+          >
+            <span
+              ref={stripRef}
+              style={{
+                display: "block",
+                transform: `translateY(${-(length + Math.max(index, 0))}em)`,
+              }}
+            >
+              {Array.from(strip).map((ch, i) => (
+                <span key={i} style={CELL}>
+                  {ch}
+                </span>
+              ))}
+            </span>
+          </span>
+        );
+      }
+
+      function charsetFor(ch) {
+        if (ch >= "0" && ch <= "9") return DIGITS;
+        if (ch >= "A" && ch <= "Z") return UPPER;
+        if (ch >= "a" && ch <= "z") return LOWER;
+        return null;
+      }
+
+      function SlotText({ text, direction = "both", style }) {
+        const label = String(text);
+        const chars = Array.from(label);
+        const n = chars.length;
+        return (
+          <span
+            role="img"
+            aria-label={label}
+            style={{ display: "inline-flex", whiteSpace: "pre", ...style }}
+          >
+            {chars.map((ch, i) => {
+              const k = n - i;
+              const cs = charsetFor(ch);
+              return cs ? (
+                <Reel key={`r${k}`} charset={cs} glyph={ch} direction={direction} />
+              ) : (
+                <span aria-hidden="true" key={`s${k}${ch}`} style={CELL}>
+                  {ch}
+                </span>
+              );
+            })}
+          </span>
+        );
+      }
+
+      function SlotLetter({ char, direction = "both", style }) {
+        const ch = Array.from(String(char))[0] ?? "";
+        const cs =
+          ch >= "A" && ch <= "Z" ? UPPER : ch >= "a" && ch <= "z" ? LOWER : null;
+        return (
+          <span
+            role="img"
+            aria-label={ch}
+            style={{ display: "inline-flex", whiteSpace: "pre", ...style }}
+          >
+            {cs ? (
+              <Reel charset={cs} glyph={ch} direction={direction} />
+            ) : (
+              <span aria-hidden="true" style={CELL}>
+                {ch}
+              </span>
+            )}
+          </span>
+        );
+      }
+
+      function SlotNumber({
+        value,
+        format,
+        locales = "en-US",
+        suffix = "",
+        direction = "both",
+        style,
+      }) {
+        const text =
+          new Intl.NumberFormat(locales, format).format(value) + suffix;
+        return <SlotText text={text} direction={direction} style={style} />;
+      }
+
+      // ---- demo plumbing ----------------------------------------------------
+      const STRINGS = {
+        en: {
+          lang: "中文",
+          tagline:
+            "Stock-Events-style slot-machine rolls for numbers, letters, and text in React. Dependency-free, accessible, reduced-motion aware.",
+          theme: "Theme",
+          direction: "Direction",
+          dir: { both: "Both", up: "Up", down: "Down" },
+          numberEyebrow: "SlotNumber",
+          numberCtx: "Currency, percent, compact — any Intl.NumberFormat. Digits roll; symbols hold.",
+          letterEyebrow: "SlotLetter",
+          letterCtx: "A single character rolling through its alphabet, wrapping around.",
+          textEyebrow: "SlotText",
+          textCtx: "Each letter and digit is its own reel; spaces and symbols stay put.",
+          install: "Install",
+        },
+        zh: {
+          lang: "EN",
+          tagline:
+            "為 React 打造的拉霸式數字滾動效果，靈感來自 Stock Events。零依賴、可存取、並支援減少動態偏好。",
+          theme: "主題",
+          direction: "方向",
+          dir: { both: "雙向", up: "向上", down: "向下" },
+          numberEyebrow: "SlotNumber",
+          numberCtx: "貨幣、百分比、精簡格式——任何 Intl.NumberFormat。數字滾動，符號不動。",
+          letterEyebrow: "SlotLetter",
+          letterCtx: "單一字元在字母表中循環滾動。",
+          textEyebrow: "SlotText",
+          textCtx: "每個字母與數字各自為一個轉軸；空格與符號保持靜止。",
+          install: "安裝",
+        },
+      };
+
+      const NUMBERS = [1234, 13190, 597, 5970000, 81293, 42];
+      const LETTERS = ["A", "Q", "Z", "M", "E", "R", "S"];
+      const WORDS = ["JACKPOT", "WINNER", "CHERRY", "SLOT 7", "BONUS"];
+      const PAUSE = 1900;
+
+      function useCycle(values) {
+        const [i, setI] = useState(0);
+        useEffect(() => {
+          const id = setInterval(
+            () => setI((p) => (p + 1) % values.length),
+            PAUSE,
+          );
+          return () => clearInterval(id);
+        }, [values.length]);
+        return values[i];
+      }
+
+      function DirectionControl({ value, onChange, t }) {
+        return (
+          <div>
+            <span className="seg-label">{t.direction}</span>
+            <div className="seg" role="group" aria-label={t.direction}>
+              {["both", "up", "down"].map((o) => (
+                <button
+                  key={o}
+                  type="button"
+                  className={"seg-btn" + (value === o ? " active" : "")}
+                  aria-pressed={value === o}
+                  onClick={() => onChange(o)}
+                >
+                  {t.dir[o]}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      }
+
+      function DemoCard({ eyebrow, context, dir, setDir, t, children }) {
+        return (
+          <section className="card">
+            <p className="eyebrow">{eyebrow}</p>
+            <div className="hero">{children}</div>
+            <p className="context">{context}</p>
+            <DirectionControl value={dir} onChange={setDir} t={t} />
+          </section>
+        );
+      }
+
+      const store = {
+        get(k, fb) {
+          try {
+            return localStorage.getItem(k) ?? fb;
+          } catch {
+            return fb;
+          }
+        },
+        set(k, v) {
+          try {
+            localStorage.setItem(k, v);
+          } catch {}
+        },
+      };
+
+      function App() {
+        const [theme, setTheme] = useState(() => store.get("se-theme", "dark"));
+        const [lang, setLang] = useState(() => store.get("se-lang", "en"));
+        const [numDir, setNumDir] = useState("both");
+        const [letterDir, setLetterDir] = useState("both");
+        const [textDir, setTextDir] = useState("both");
+
+        useEffect(() => {
+          document.documentElement.setAttribute("data-theme", theme);
+          document.documentElement.setAttribute("lang", lang);
+          store.set("se-theme", theme);
+          store.set("se-lang", lang);
+        }, [theme, lang]);
+
+        const t = STRINGS[lang];
+        const numValue = useCycle(NUMBERS);
+        const letterValue = useCycle(LETTERS);
+        const textValue = useCycle(WORDS);
+
+        return (
+          <React.Fragment>
+            <header className="site">
+              <div>
+                <h1 className="wordmark">sloteffect</h1>
+                <p className="tagline">{t.tagline}</p>
+              </div>
+              <div className="toolbar">
+                <button
+                  type="button"
+                  className="lang-btn"
+                  onClick={() => setLang(lang === "en" ? "zh" : "en")}
+                  aria-label="Toggle language"
+                >
+                  {t.lang}
+                </button>
+                <button
+                  type="button"
+                  className="icon-btn"
+                  onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                  aria-label={t.theme}
+                >
+                  {theme === "dark" ? "☀" : "☾"}
+                </button>
+              </div>
+            </header>
+
+            <DemoCard
+              eyebrow={t.numberEyebrow}
+              context={t.numberCtx}
+              dir={numDir}
+              setDir={setNumDir}
+              t={t}
+            >
+              <SlotNumber
+                value={numValue}
+                format={{
+                  style: "currency",
+                  currency: "USD",
+                  maximumFractionDigits: 0,
+                }}
+                direction={numDir}
+              />
+            </DemoCard>
+
+            <DemoCard
+              eyebrow={t.letterEyebrow}
+              context={t.letterCtx}
+              dir={letterDir}
+              setDir={setLetterDir}
+              t={t}
+            >
+              <SlotLetter char={letterValue} direction={letterDir} />
+            </DemoCard>
+
+            <DemoCard
+              eyebrow={t.textEyebrow}
+              context={t.textCtx}
+              dir={textDir}
+              setDir={setTextDir}
+              t={t}
+            >
+              <SlotText text={textValue} direction={textDir} />
+            </DemoCard>
+
+            <footer className="site">
+              <a href="https://www.npmjs.com/package/sloteffect">npm</a>
+              <a href="https://github.com/jauderho/sloteffect">GitHub</a>
+              <span style={{ color: "var(--text3)" }}>
+                {t.install}: <code>npm i sloteffect</code>
+              </span>
+            </footer>
+          </React.Fragment>
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    </script>
+  </body>
+</html>

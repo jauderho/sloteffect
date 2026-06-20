@@ -1,2 +1,18 @@
 
 .sops/**
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Lockfiles from other package managers (bun is canonical here)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Logs & misc
+*.log
+.DS_Store
+coverage/
