@@ -30,7 +30,7 @@ export const ROW_H = 1.3;
  * Underdamped spring (ζ≈0.68): ~5% overshoot, then a smooth settle. Sampled at
  * 60 steps with a frequency (ω_d≈3π) high enough that the oscillation fully
  * decays *within* the duration — so the curve lands on 1 cleanly instead of
- * snapping the last few pixels into place. See SlotNumber.md for the generator.
+ * snapping the last few pixels into place. See docs/SlotNumber.md for the generator.
  */
 export const SLOT_EASING =
   "linear(0, 0.0208, 0.0752, 0.1525, 0.2439, 0.3422, 0.4417, 0.5382, 0.6286, " +
