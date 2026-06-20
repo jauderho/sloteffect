@@ -19,6 +19,8 @@
   `prefers-reduced-motion` snaps instantly.
 - **Tiny** — ~5 KB ESM, tree-shakeable, ships ESM + CJS + types.
 
+![SlotNumber rolling through currency values like a slot machine](assets/slotnumber.webp)
+
 **[▶ Live demo](https://jauderho.github.io/sloteffect/)**
 
 ---

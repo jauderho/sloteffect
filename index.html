@@ -126,31 +126,6 @@
         outline-offset: 2px;
       }
 
-      .movie {
-        margin: 28px 0 0;
-      }
-      .movie img {
-        display: block;
-        width: 100%;
-        max-width: 600px;
-        height: auto;
-        border: 1px solid var(--border);
-        border-radius: 16px;
-        background: var(--surface);
-      }
-      .movie figcaption {
-        margin-top: 8px;
-        font-size: 12px;
-        color: var(--text3);
-      }
-      .section {
-        font-family: "Newsreader", "Noto Serif TC", serif;
-        font-weight: 500;
-        font-size: clamp(22px, 3.5vw, 30px);
-        letter-spacing: -0.01em;
-        margin: 26px 0 14px;
-        line-height: 1.1;
-      }
       .card {
         background: var(--surface);
         border: 1px solid var(--border);
@@ -763,9 +738,6 @@
           dir: { both: "Both", up: "Up", down: "Down" },
           randomSpin: "Random spin",
           onOff: { off: "Off", on: "On" },
-          liveDemo: "Live Demo",
-          movieAlt: "SlotNumber rolling through currency values like a slot machine",
-          movieCaption: "SlotNumber in motion — each digit is its own reel.",
           numberEyebrow: "SlotNumber",
           numberCtx: "Any number type — currency, percent, compact, negatives — via Intl.NumberFormat. Digits roll; symbols hold.",
           letterEyebrow: "SlotLetter",
@@ -784,9 +756,6 @@
           dir: { both: "雙向", up: "向上", down: "向下" },
           randomSpin: "隨機滾動",
           onOff: { off: "關", on: "開" },
-          liveDemo: "即時示範",
-          movieAlt: "SlotNumber 像拉霸機一樣滾動貨幣數字",
-          movieCaption: "SlotNumber 動態示範——每個數字都是獨立的滾輪。",
           numberEyebrow: "SlotNumber",
           numberCtx: "任何數字類型——貨幣、百分比、精簡格式、負數——透過 Intl.NumberFormat。數字滾動，符號不動。",
           letterEyebrow: "SlotLetter",
@@ -974,20 +943,6 @@
                 </button>
               </div>
             </header>
-
-            <figure className="movie">
-              <img
-                src="assets/slotnumber.webp"
-                alt={t.movieAlt}
-                width="760"
-                height="280"
-                loading="lazy"
-                decoding="async"
-              />
-              <figcaption>{t.movieCaption}</figcaption>
-            </figure>
-
-            <h2 className="section">{t.liveDemo}</h2>
 
             <DemoCard
               eyebrow={t.numberEyebrow}
