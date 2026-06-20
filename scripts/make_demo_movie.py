@@ -56,11 +56,21 @@ def spring(p: float) -> float:
     )
 
 
-def forward_path(frm: str, to: str) -> list[str]:
-    """Inclusive path frm→to stepping +1 through 0-9, wrapping."""
-    fi, ti = DIGITS.index(frm), DIGITS.index(to)
-    steps = (ti - fi) % 10 or 10
-    return [DIGITS[(fi + k) % 10] for k in range(steps + 1)]
+def build_roll(target: str, spin: int, roll_up: bool) -> tuple[list[str], int, int]:
+    """Mirror the component's buildRoll for a digit reel.
+
+    Returns (rows, start_row, end_row): the glyphs stacked top→bottom plus which
+    row is shown at the start and end of the roll. `roll_up` rolls forward
+    (digits increase); otherwise it rolls the other way (reversed path).
+    """
+    ti = DIGITS.index(target)
+    if roll_up:
+        rows = [DIGITS[(ti - spin + k) % 10] for k in range(spin + 1)]
+        return rows, 0, len(rows) - 1
+    # roll down: path target→…→start, reversed so it travels the opposite way
+    path = [DIGITS[(ti + spin - k) % 10] for k in range(spin + 1)]
+    rows = path[::-1]
+    return rows, len(rows) - 1, 0
 
 
 def main() -> None:
@@ -89,8 +99,12 @@ def main() -> None:
         d = ImageDraw.Draw(img)
         d.text((x + w / 2, cy), ch, font=font, fill=FG, anchor="mm")
 
-    def render(value: str, progress: float | None) -> Image.Image:
-        """One frame. progress None = static; else 0..1 roll into `value`."""
+    def render(value: str, progress: float | None, trans: int) -> Image.Image:
+        """One frame. progress None = static; else 0..1 roll into `value`.
+
+        `trans` seeds the per-digit roll direction so a mix of digits roll up and
+        down (direction="both", the default).
+        """
         img = Image.new("RGB", (CANVAS_W * SS, CANVAS_H * SS), BG)
         cy = CANVAS_H * SS / 2
         digit_i = 0
@@ -101,28 +115,28 @@ def main() -> None:
             if progress is None:
                 draw_glyph(img, ch, x, cy, digit_w)
             else:
-                start = DIGITS[(DIGITS.index(ch) - SPINS[digit_i % len(SPINS)]) % 10]
-                rows = forward_path(start, ch)
-                shift = spring(progress) * (len(rows) - 1) * row_h
+                spin = SPINS[digit_i % len(SPINS)]
+                roll_up = (digit_i + trans) % 2 == 0  # mix of up/down per change
+                rows, start_row, end_row = build_roll(ch, spin, roll_up)
+                pos = start_row + spring(progress) * (end_row - start_row)
                 cell = Image.new("RGB", (round(digit_w), row_h), BG)
-                top = row_h / 2 - shift  # center of row 0 within the cell
                 for i, g in enumerate(rows):
                     ImageDraw.Draw(cell).text(
-                        (digit_w / 2, top + i * row_h), g, font=font,
-                        fill=FG, anchor="mm",
+                        (digit_w / 2, row_h / 2 + (i - pos) * row_h), g,
+                        font=font, fill=FG, anchor="mm",
                     )
                 img.paste(cell, (round(x), round(cy - row_h / 2)))
             digit_i += 1
         return img.resize((CANVAS_W, CANVAS_H), Image.LANCZOS)
 
-    frames: list[Image.Image] = [render(VALUES[0], None) for _ in range(HOLD_FRAMES)]
+    frames: list[Image.Image] = [render(VALUES[0], None, 0) for _ in range(HOLD_FRAMES)]
     targets = VALUES[1:] + VALUES[:1]
-    for target in targets:
+    for ti, target in enumerate(targets):
         for f in range(1, ROLL_FRAMES + 1):
-            frames.append(render(target, f / ROLL_FRAMES))
+            frames.append(render(target, f / ROLL_FRAMES, ti))
         # Drop the final hold so the loop is seamless (it equals the first hold).
-        holds = HOLD_FRAMES if target is not targets[-1] else 0
-        frames.extend(render(target, None) for _ in range(holds))
+        holds = HOLD_FRAMES if ti != len(targets) - 1 else 0
+        frames.extend(render(target, None, ti) for _ in range(holds))
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     frames[0].save(

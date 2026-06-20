@@ -32,20 +32,23 @@ import {
 /** Steady (un-jittered) roll duration used when `randomSpin` is off. */
 const STEADY_COIN = 0.5;
 
-// A reel row: a 1-line box, glyph positioned like the base text.
-const ROW_CSS = `display:block;height:${ROW_H}em;line-height:${ROW_H};white-space:pre`;
-
 interface Grapheme {
   g: string;
   start: number;
 }
 
+// One grapheme segmenter for the whole module — constructing one per call is
+// surprisingly costly, and it is stateless, so it is safe to reuse.
+const SEGMENTER =
+  typeof Intl !== "undefined" && "Segmenter" in Intl
+    ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
+    : null;
+
 /** Split into grapheme clusters with their UTF-16 offsets (for Range probing). */
 function segmentWithOffsets(text: string): Grapheme[] {
   const out: Grapheme[] = [];
-  if (typeof Intl !== "undefined" && "Segmenter" in Intl) {
-    const seg = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-    for (const s of seg.segment(text))
+  if (SEGMENTER) {
+    for (const s of SEGMENTER.segment(text))
       out.push({ g: s.segment, start: s.index });
     return out;
   }
@@ -117,7 +120,7 @@ export function SlotText({
     // Wipe the previous value's reels before spinning this one in.
     const wipe = () => {
       for (const c of cellsRef.current) {
-        for (const a of c.getAnimations()) a.cancel();
+        for (const a of c.getAnimations({ subtree: true })) a.cancel();
         c.remove();
       }
       cellsRef.current = [];
@@ -196,15 +199,12 @@ export function SlotText({
         rand(),
         reel.fill,
       );
+      // One multi-line text node — each line is a ROW_H-tall reel row — instead
+      // of a span per glyph. Same layout, but O(1) DOM nodes per reel instead of
+      // O(path length), so long rolls cost no extra nodes.
       const strip = document.createElement("span");
-      strip.style.cssText =
-        "position:absolute;left:0;top:0;width:100%;will-change:transform";
-      for (const ch of rows) {
-        const row = document.createElement("span");
-        row.style.cssText = ROW_CSS;
-        row.textContent = ch;
-        strip.appendChild(row);
-      }
+      strip.style.cssText = `position:absolute;left:0;top:0;width:100%;white-space:pre;line-height:${ROW_H};will-change:transform`;
+      strip.textContent = rows.join("\n");
       cell.appendChild(strip);
       // Land on the final glyph and stay — the reel itself is the rest state.
       strip.style.transform = at(endRow);
