@@ -64,7 +64,7 @@ already-formatted `string` (passed through verbatim).
 
 ```tsx
 <SlotNumber value={0.813} format={{ style: "percent", minimumFractionDigits: 1 }} />   // 81.3%
-<SlotNumber value={surcharge} format={{ style: "currency", currency: "USD" }} suffix="/yr" />
+<SlotNumber value={1234.5} format={{ style: "currency", currency: "USD" }} cents counter />  // $1,234.⁵⁰
 <SlotNumber value={9007199254740993n} />                                               // bigint
 ```
 
@@ -75,7 +75,12 @@ already-formatted `string` (passed through verbatim).
 | `locales` | `string \| string[]` | `"en-US"` | BCP 47 locale(s). |
 | `suffix` | `string` | `""` | Static text appended after the number (e.g. `"/yr"`). |
 | `direction` | `"both" \| "up" \| "down"` | `"both"` | Roll direction. |
+| `randomSpin` | `boolean` | `false` | Stagger each digit's spin/settle randomly per play. |
+| `cents` | `boolean` | `false` | Render the two fractional digits at 90% size, bottom-aligned (the decimal point stays full size). Forces two fraction digits. |
+| `counter` | `boolean` | `false` | Roll the digits like a gear-reduction odometer: each rolls from the **previous** value by however many of its own place-steps the value crossed, so low digits blur while the ten-thousands and up barely move. Best for a value that changes continuously (e.g. a slider); pass a stable `format` reference. |
 | `className` / `style` | — | — | Passed to the container. |
+
+`cents` and `counter` read the value's digit places via `Intl.NumberFormat.formatToParts`; they're skipped when `value` is a preformatted string.
 
 ### `SlotLetter`
 

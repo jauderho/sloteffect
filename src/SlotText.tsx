@@ -17,8 +17,10 @@
 import { type CSSProperties, useLayoutEffect, useRef } from "react";
 import {
   buildRoll,
+  charsetOf,
   chooseReel,
   DEFAULT_SPIN_POOL,
+  DIGITS,
   glyphKind,
   hashSeed,
   makeRng,
@@ -90,6 +92,21 @@ export interface SlotTextProps {
    * settles randomly (a staggered roll that differs on every play).
    */
   randomSpin?: boolean;
+  /**
+   * Extra full revolutions for each successive digit cell (in reading order),
+   * making lower-place digits spin faster. Used by `SlotNumber`'s `counter`
+   * mode; see {@link odometerDigit}. Non-digit cells are unaffected.
+   */
+  digitCycles?: number[];
+  /**
+   * Explicit start glyph for each successive digit cell (in reading order) —
+   * the value to roll *from*. When given, the digit rolls from this glyph
+   * instead of a synthesized one; an unchanged digit with no extra revolutions
+   * stays still. Used by `SlotNumber`'s odometer-style `counter` mode.
+   */
+  digitFrom?: string[];
+  /** Settle curve (a CSS `linear()` easing). Defaults to {@link SLOT_EASING}. */
+  easing?: string;
   /** Optional class on the container. */
   className?: string;
   /** Optional inline style merged onto the container. */
@@ -102,6 +119,9 @@ export function SlotText({
   dir = "auto",
   spinPool = DEFAULT_SPIN_POOL,
   randomSpin = false,
+  digitCycles,
+  digitFrom,
+  easing = SLOT_EASING,
   className,
   style,
 }: SlotTextProps) {
@@ -125,104 +145,155 @@ export function SlotText({
       }
       cellsRef.current = [];
     };
-    wipe();
 
-    const node = textEl.firstChild;
-    if (!node || prefersReducedMotion()) {
-      // Show the real (kerned) text; nothing animates.
-      textEl.style.visibility = "visible";
-      return wipe;
-    }
+    // Measure and build the reels. Re-runnable so we can rebuild once the web
+    // fonts finish loading — boxes first measured against a fallback font would
+    // otherwise leave the cells (and the cents group) mispositioned.
+    const build = () => {
+      wipe();
 
-    // Off → a per-value seed makes the roll identical every play; on → truly
-    // random each play. `rand` drives the start glyph, spin glyphs, direction.
-    const rand = randomSpin ? Math.random : makeRng(hashSeed(label));
-
-    const toG = segmentWithOffsets(label);
-    const hostRect = host.getBoundingClientRect();
-    const bg = resolveBackground(host);
-    // A grapheme's Range rect is its em box, but a reel row centers its glyph
-    // within ROW_H (adding half-leading). Lift each cell by that half-leading so
-    // the reel sits exactly on the measured glyph box.
-    const lead =
-      ((ROW_H - 1) / 2) * parseFloat(getComputedStyle(host).fontSize);
-
-    // Other-script letters spin through this value's own same-kind glyphs, so a
-    // roll uses in-script characters (e.g. CJK through CJK).
-    const letterPool = [
-      ...new Set(toG.map((x) => x.g).filter((g) => glyphKind(g) === "letter")),
-    ];
-
-    // Measure every grapheme's kerned box first (reads), then build all cells
-    // (writes), so a long string doesn't trigger a forced reflow per glyph.
-    interface Plan {
-      g: string;
-      reel: ReturnType<typeof chooseReel>;
-      rect: DOMRect;
-    }
-    const plans: Plan[] = [];
-    for (const grapheme of toG) {
-      const reel = chooseReel(grapheme.g, null, letterPool, spinPool, rand);
-      // Whitespace has no ink and never animates — skip it entirely.
-      if (!reel && grapheme.g.trim() === "") continue;
-      const range = document.createRange();
-      range.setStart(node, grapheme.start);
-      range.setEnd(node, grapheme.start + grapheme.g.length);
-      plans.push({ g: grapheme.g, reel, rect: range.getBoundingClientRect() });
-    }
-
-    // Hide the measured text; the cells are now the visible, resting glyphs.
-    textEl.style.visibility = "hidden";
-
-    const cells: HTMLSpanElement[] = [];
-    const at = (i: number) => `translateY(${-(i * ROW_H)}em)`;
-    for (const { g, reel, rect } of plans) {
-      const cell = document.createElement("span");
-      cell.setAttribute("aria-hidden", "true");
-      const left = rect.left - hostRect.left;
-      const top = rect.top - hostRect.top;
-
-      if (!reel) {
-        // A symbol (currency, separator, punctuation): render it statically.
-        cell.style.cssText = `position:absolute;left:${left}px;top:${top}px;line-height:1;white-space:pre`;
-        cell.textContent = g;
-        layer.appendChild(cell);
-        cells.push(cell);
-        continue;
+      const node = textEl.firstChild;
+      if (!node || prefersReducedMotion()) {
+        // Show the real (kerned) text; nothing animates.
+        textEl.style.visibility = "visible";
+        return;
       }
 
-      cell.style.cssText = `position:absolute;left:${left}px;top:${top - lead}px;width:${rect.width}px;height:${ROW_H}em;overflow:hidden;background:${bg}`;
-      const { rows, startRow, endRow } = buildRoll(
-        reel.from,
-        g,
-        direction,
-        rand(),
-        reel.fill,
-      );
-      // One multi-line text node — each line is a ROW_H-tall reel row — instead
-      // of a span per glyph. Same layout, but O(1) DOM nodes per reel instead of
-      // O(path length), so long rolls cost no extra nodes.
-      const strip = document.createElement("span");
-      strip.style.cssText = `position:absolute;left:0;top:0;width:100%;white-space:pre;line-height:${ROW_H};will-change:transform`;
-      strip.textContent = rows.join("\n");
-      cell.appendChild(strip);
-      // Land on the final glyph and stay — the reel itself is the rest state.
-      strip.style.transform = at(endRow);
-      // randomSpin staggers each character's settle; otherwise all settle as one.
-      const duration = rollDuration(randomSpin ? Math.random() : STEADY_COIN);
-      // Keep the strip promoted (will-change stays) so finishing the roll never
-      // triggers a layer de-promotion repaint — which reads as a final flicker.
-      strip.animate([{ transform: at(startRow) }, { transform: at(endRow) }], {
-        duration,
-        easing: SLOT_EASING,
+      // Off → a per-value seed makes the roll identical every play; on → truly
+      // random each play. `rand` drives the start glyph, spin glyphs, direction.
+      const rand = randomSpin ? Math.random : makeRng(hashSeed(label));
+
+      const toG = segmentWithOffsets(label);
+      const hostRect = host.getBoundingClientRect();
+      const bg = resolveBackground(host);
+      // A grapheme's Range rect is its em box, but a reel row centers its glyph
+      // within ROW_H (adding half-leading). Lift each cell by that half-leading so
+      // the reel sits exactly on the measured glyph box.
+      const lead =
+        ((ROW_H - 1) / 2) * parseFloat(getComputedStyle(host).fontSize);
+
+      // Other-script letters spin through this value's own same-kind glyphs, so a
+      // roll uses in-script characters (e.g. CJK through CJK).
+      const letterPool = [
+        ...new Set(
+          toG.map((x) => x.g).filter((g) => glyphKind(g) === "letter"),
+        ),
+      ];
+
+      // Measure every grapheme's kerned box first (reads), then build all cells
+      // (writes), so a long string doesn't trigger a forced reflow per glyph.
+      interface Plan {
+        g: string;
+        reel: ReturnType<typeof chooseReel>;
+        rect: DOMRect;
+        cycles: number;
+      }
+      const plans: Plan[] = [];
+      let digitIdx = 0;
+      for (const grapheme of toG) {
+        const isDigit = charsetOf(grapheme.g) === DIGITS;
+        let cycles = 0;
+        let reel: ReturnType<typeof chooseReel>;
+        if (isDigit) {
+          const i = digitIdx++;
+          cycles = digitCycles?.[i] ?? 0;
+          if (digitFrom) {
+            // Odometer mode: roll from the supplied previous digit. An unchanged
+            // digit with no extra revolutions simply holds still.
+            const from = digitFrom[i] ?? grapheme.g;
+            reel =
+              from === grapheme.g && cycles === 0 ? null : { from, fill: [] };
+          } else {
+            reel = chooseReel(grapheme.g, null, letterPool, spinPool, rand);
+          }
+        } else {
+          reel = chooseReel(grapheme.g, null, letterPool, spinPool, rand);
+        }
+        // Whitespace has no ink and never animates — skip it entirely.
+        if (!reel && grapheme.g.trim() === "") continue;
+        const range = document.createRange();
+        range.setStart(node, grapheme.start);
+        range.setEnd(node, grapheme.start + grapheme.g.length);
+        plans.push({
+          g: grapheme.g,
+          reel,
+          rect: range.getBoundingClientRect(),
+          cycles,
+        });
+      }
+
+      // Hide the measured text; the cells are now the visible, resting glyphs.
+      textEl.style.visibility = "hidden";
+
+      const cells: HTMLSpanElement[] = [];
+      const at = (i: number) => `translateY(${-(i * ROW_H)}em)`;
+      for (const { g, reel, rect, cycles } of plans) {
+        const cell = document.createElement("span");
+        cell.setAttribute("aria-hidden", "true");
+        const left = rect.left - hostRect.left;
+        const top = rect.top - hostRect.top;
+
+        if (!reel) {
+          // A symbol (currency, separator, punctuation): render it statically.
+          cell.style.cssText = `position:absolute;left:${left}px;top:${top}px;line-height:1;white-space:pre`;
+          cell.textContent = g;
+          layer.appendChild(cell);
+          cells.push(cell);
+          continue;
+        }
+
+        cell.style.cssText = `position:absolute;left:${left}px;top:${top - lead}px;width:${rect.width}px;height:${ROW_H}em;overflow:hidden;background:${bg}`;
+        const { rows, startRow, endRow } = buildRoll(
+          reel.from,
+          g,
+          direction,
+          rand(),
+          reel.fill,
+          cycles,
+        );
+        // One multi-line text node — each line is a ROW_H-tall reel row — instead
+        // of a span per glyph. Same layout, but O(1) DOM nodes per reel instead of
+        // O(path length), so long rolls cost no extra nodes.
+        const strip = document.createElement("span");
+        strip.style.cssText = `position:absolute;left:0;top:0;width:100%;white-space:pre;line-height:${ROW_H};will-change:transform`;
+        strip.textContent = rows.join("\n");
+        cell.appendChild(strip);
+        // Land on the final glyph and stay — the reel itself is the rest state.
+        strip.style.transform = at(endRow);
+        // randomSpin staggers each character's settle; otherwise all settle as one.
+        const duration = rollDuration(randomSpin ? Math.random() : STEADY_COIN);
+        // Keep the strip promoted (will-change stays) so finishing the roll never
+        // triggers a layer de-promotion repaint — which reads as a final flicker.
+        strip.animate(
+          [{ transform: at(startRow) }, { transform: at(endRow) }],
+          {
+            duration,
+            easing,
+          },
+        );
+        layer.appendChild(cell);
+        cells.push(cell);
+      }
+
+      cellsRef.current = cells;
+    };
+
+    build();
+
+    // Rebuild once fonts are ready (no-op if already loaded), then clean up.
+    let active = true;
+    const fonts = typeof document !== "undefined" ? document.fonts : null;
+    if (fonts && fonts.status !== "loaded") {
+      fonts.ready.then(() => {
+        if (active) build();
       });
-      layer.appendChild(cell);
-      cells.push(cell);
     }
 
-    cellsRef.current = cells;
-    return wipe;
-  }, [label, direction, spinPool, randomSpin]);
+    return () => {
+      active = false;
+      wipe();
+    };
+  }, [label, direction, spinPool, randomSpin, digitCycles, digitFrom, easing]);
 
   return (
     <span

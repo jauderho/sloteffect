@@ -41,6 +41,20 @@ export const SLOT_EASING =
   "0.9981, 0.9984, 0.9986, 0.9989, 0.9991, 0.9994, 0.9995, 0.9997, 0.9998, " +
   "0.9999, 1, 1.0001, 1.0001, 1.0001, 1.0002, 1)";
 
+/**
+ * A more damped spring (ζ≈0.754) with ~2.7% overshoot — half the bounce of
+ * {@link SLOT_EASING}. Used for `SlotNumber`'s `counter` mode, where the rapid,
+ * gear-like spin reads better with a gentler settle.
+ */
+export const SLOT_EASING_SOFT =
+  "linear(0, 0.0253, 0.0896, 0.1778, 0.2787, 0.3835, 0.486, 0.582, 0.6689, " +
+  "0.7454, 0.8108, 0.8655, 0.9101, 0.9454, 0.9727, 0.993, 1.0075, 1.0173, " +
+  "1.0232, 1.0263, 1.0272, 1.0265, 1.0247, 1.0223, 1.0196, 1.0167, 1.014, " +
+  "1.0114, 1.009, 1.0069, 1.0051, 1.0037, 1.0024, 1.0015, 1.0007, 1.0002, " +
+  "0.9998, 0.9995, 0.9994, 0.9993, 0.9993, 0.9993, 0.9993, 0.9994, 0.9995, " +
+  "0.9995, 0.9996, 0.9997, 0.9998, 0.9998, 0.9999, 0.9999, 0.9999, 1, 1, 1, " +
+  "1, 1, 1, 1, 1)";
+
 /** Base roll duration (ms) before per-reel jitter. */
 export const BASE_DURATION = 750;
 /** Maximum extra duration (ms) added per reel so columns settle asynchronously. */
@@ -60,26 +74,40 @@ function sharedCharset(from: string, to: string): string | null {
   return cs && cs === charsetOf(to) ? cs : null;
 }
 
-/** Inclusive path through `charset` from `from` to `to` stepping forward (+1, wrapping). */
-function forwardPath(charset: string, from: string, to: string): string[] {
+/**
+ * Inclusive path through `charset` from `from` to `to` stepping forward (+1,
+ * wrapping). `cycles` prepends that many extra full revolutions, so the reel
+ * travels further in the same duration — i.e. spins faster (see `counterCycles`).
+ */
+function forwardPath(
+  charset: string,
+  from: string,
+  to: string,
+  cycles = 0,
+): string[] {
   const len = charset.length;
   const fi = charset.indexOf(from);
   const ti = charset.indexOf(to);
-  const steps = (ti - fi + len) % len || len;
+  const steps = ((ti - fi + len) % len || len) + cycles * len;
   const rows: string[] = [];
   for (let k = 0; k <= steps; k++) rows.push(charset[(fi + k) % len] as string);
   return rows;
 }
 
 /** Inclusive path through `charset` from `from` to `to` stepping backward (-1, wrapping). */
-function backwardPath(charset: string, from: string, to: string): string[] {
+function backwardPath(
+  charset: string,
+  from: string,
+  to: string,
+  cycles = 0,
+): string[] {
   const len = charset.length;
   const fi = charset.indexOf(from);
   const ti = charset.indexOf(to);
-  const steps = (fi - ti + len) % len || len;
+  const steps = ((fi - ti + len) % len || len) + cycles * len;
   const rows: string[] = [];
   for (let k = 0; k <= steps; k++)
-    rows.push(charset[(fi - k + len) % len] as string);
+    rows.push(charset[(((fi - k) % len) + len) % len] as string);
   return rows;
 }
 
@@ -103,6 +131,8 @@ export interface Roll {
  * @param coin Random value in [0, 1) used only when `direction === "both"`.
  * @param fill Intermediate glyphs inserted between `from` and `to` for
  *   non-ordered pairs (ignored for ordered charsets).
+ * @param cycles Extra full revolutions for ordered charsets (faster spin in the
+ *   same duration); ignored for non-ordered pairs. See {@link counterCycles}.
  */
 export function buildRoll(
   from: string,
@@ -110,13 +140,14 @@ export function buildRoll(
   direction: SlotDirection,
   coin: number,
   fill: string[] = [],
+  cycles = 0,
 ): Roll {
   const rollUp = direction === "both" ? coin < 0.5 : direction === "up";
   const cs = sharedCharset(from, to);
   const path = cs
     ? rollUp
-      ? forwardPath(cs, from, to)
-      : backwardPath(cs, from, to)
+      ? forwardPath(cs, from, to, cycles)
+      : backwardPath(cs, from, to, cycles)
     : [from, ...fill, to];
   if (rollUp) return { rows: path, startRow: 0, endRow: path.length - 1 };
   const rows = path.slice().reverse();
@@ -245,6 +276,40 @@ export function chooseReel(
 /** Per-reel roll duration (ms) with jitter applied. */
 export function rollDuration(coin: number = Math.random()): number {
   return BASE_DURATION + coin * DURATION_JITTER;
+}
+
+/** Most extra revolutions a single counter digit may roll (caps fast spins). */
+export const COUNTER_CYCLE_CAP = 6;
+
+/** A counter digit's previous glyph and how many extra revolutions it rolls. */
+export interface OdometerDigit {
+  /** The digit shown before the change (rolled *from*). */
+  from: string;
+  /** Extra full revolutions on top of the `from → to` step. */
+  cycles: number;
+}
+
+/**
+ * Resolve one digit of a gear-reduction odometer for a `prev → cur` change,
+ * both given in the smallest unit (e.g. integer cents). `place` is the power of
+ * ten this digit occupies (`0` = units, `1` = tens, …). A digit advances by the
+ * number of its own place-steps the value crossed, so low places spin many
+ * revolutions (a blur) while high places barely move — exactly like the wheels
+ * of an odometer. Revolutions are capped by {@link COUNTER_CYCLE_CAP}.
+ */
+export function odometerDigit(
+  prev: number,
+  cur: number,
+  place: number,
+  cap = COUNTER_CYCLE_CAP,
+): OdometerDigit {
+  const p = 10 ** place;
+  const pv = Math.floor(prev / p);
+  const steps = Math.floor(cur / p) - pv;
+  return {
+    from: String(((pv % 10) + 10) % 10),
+    cycles: Math.min(cap, Math.floor(Math.abs(steps) / 10)),
+  };
 }
 
 /** FNV-1a hash of a string → 32-bit seed (for deterministic spins). */

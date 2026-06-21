@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildRoll,
+  COUNTER_CYCLE_CAP,
   charsetOf,
   chooseReel,
   DEFAULT_SPIN_POOL,
@@ -11,6 +12,7 @@ import {
   isIdeograph,
   LOWER,
   makeRng,
+  odometerDigit,
   randomGlyph,
   rollDuration,
   SPIN_LENGTH,
@@ -103,6 +105,62 @@ describe("buildRoll — fill spins non-ordered pairs through extra glyphs", () =
   it("ignores fill for ordered charsets", () => {
     const r = buildRoll("3", "5", "up", 0, ["9", "9"]);
     expect(r.rows).toEqual(["3", "4", "5"]);
+  });
+});
+
+describe("buildRoll — cycles add full revolutions to ordered charsets", () => {
+  it("prepends one extra revolution rolling up, still landing on `to`", () => {
+    const base = buildRoll("3", "7", "up", 0);
+    const r = buildRoll("3", "7", "up", 0, [], 1);
+    expect(r.rows).toHaveLength(base.rows.length + DIGITS.length);
+    expect(r.rows[r.startRow]).toBe("3");
+    expect(r.rows[r.endRow]).toBe("7");
+  });
+
+  it("adds revolutions rolling down without breaking the wrap", () => {
+    const r = buildRoll("7", "3", "down", 0, [], 2);
+    expect(r.rows).toHaveLength(
+      buildRoll("7", "3", "down", 0).rows.length + 20,
+    );
+    expect(r.rows[r.startRow]).toBe("7");
+    expect(r.rows[r.endRow]).toBe("3");
+    expect(r.rows.every((g) => DIGITS.includes(g))).toBe(true);
+  });
+
+  it("ignores cycles for non-ordered (flip) pairs", () => {
+    const r = buildRoll("中", "文", "up", 0, ["天"], 3);
+    expect(r.rows).toEqual(["中", "天", "文"]);
+  });
+});
+
+describe("odometerDigit", () => {
+  it("holds an unchanged digit still and reports its previous glyph", () => {
+    const d = odometerDigit(300000000, 300000000, 4);
+    expect(d.cycles).toBe(0);
+    expect(d.from).toBe("0");
+  });
+
+  it("spins low places fast and high places slowly (gear reduction)", () => {
+    const prev = 300000000;
+    const cur = 300123456; // +$1,234.56 in cents
+    expect(odometerDigit(prev, cur, 0).cycles).toBe(COUNTER_CYCLE_CAP); // units
+    expect(odometerDigit(prev, cur, 6).cycles).toBe(0); // unchanged high place
+    expect(odometerDigit(prev, cur, 2).cycles).toBeGreaterThan(
+      odometerDigit(prev, cur, 4).cycles,
+    );
+  });
+
+  it("rolls from the previous digit at that place", () => {
+    // $2,718,281.82 → place 2 (whole dollars) previous digit is 1.
+    expect(odometerDigit(271828182, 271900000, 2).from).toBe("1");
+  });
+
+  it("caps revolutions and handles down moves", () => {
+    const big = odometerDigit(0, 999999999, 0);
+    expect(big.cycles).toBe(COUNTER_CYCLE_CAP);
+    expect(odometerDigit(500, 300, 0).cycles).toBe(
+      odometerDigit(300, 500, 0).cycles,
+    );
   });
 });
 
