@@ -297,6 +297,62 @@
         margin: 0 0 8px;
       }
 
+      /* Range slider, themed to match the segmented controls. */
+      .slider-wrap {
+        flex: 1 1 100%;
+      }
+      .slider {
+        width: 100%;
+        height: 44px;
+        margin: 0;
+        background: transparent;
+        cursor: pointer;
+        -webkit-appearance: none;
+        appearance: none;
+      }
+      .slider::-webkit-slider-runnable-track {
+        height: 6px;
+        border-radius: 3px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+      }
+      .slider::-moz-range-track {
+        height: 6px;
+        border-radius: 3px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+      }
+      .slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        margin-top: -10px;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: var(--gold);
+        border: 2px solid var(--surface);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+      }
+      .slider::-moz-range-thumb {
+        width: 24px;
+        height: 24px;
+        border: 2px solid var(--surface);
+        border-radius: 50%;
+        background: var(--gold);
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+      }
+      .slider:focus-visible {
+        outline: none;
+      }
+      .slider:focus-visible::-webkit-slider-thumb {
+        outline: 2px solid var(--gold);
+        outline-offset: 2px;
+      }
+      .slider:focus-visible::-moz-range-thumb {
+        outline: 2px solid var(--gold);
+        outline-offset: 2px;
+      }
+
       footer.site {
         margin-top: 40px;
         padding-top: 20px;
@@ -339,7 +395,7 @@
     <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
 
     <script type="text/babel" data-presets="react">
-      const { useState, useEffect, useRef, useLayoutEffect } = React;
+      const { useState, useEffect, useMemo, useRef, useLayoutEffect } = React;
 
       // ---- sloteffect (inline port of src/, kept in sync) -------------------
       const DIGITS = "0123456789";
@@ -354,6 +410,16 @@
         "0.9986, 0.9979, 0.9974, 0.9971, 0.9971, 0.9971, 0.9973, 0.9975, 0.9978, " +
         "0.9981, 0.9984, 0.9986, 0.9989, 0.9991, 0.9994, 0.9995, 0.9997, 0.9998, " +
         "0.9999, 1, 1.0001, 1.0001, 1.0001, 1.0002, 1)";
+      // A more damped spring (~2.7% overshoot) — half the bounce; used for
+      // counter mode's gentler settle.
+      const SLOT_EASING_SOFT =
+        "linear(0, 0.0253, 0.0896, 0.1778, 0.2787, 0.3835, 0.486, 0.582, 0.6689, " +
+        "0.7454, 0.8108, 0.8655, 0.9101, 0.9454, 0.9727, 0.993, 1.0075, 1.0173, " +
+        "1.0232, 1.0263, 1.0272, 1.0265, 1.0247, 1.0223, 1.0196, 1.0167, 1.014, " +
+        "1.0114, 1.009, 1.0069, 1.0051, 1.0037, 1.0024, 1.0015, 1.0007, 1.0002, " +
+        "0.9998, 0.9995, 0.9994, 0.9993, 0.9993, 0.9993, 0.9993, 0.9994, 0.9995, " +
+        "0.9995, 0.9996, 0.9997, 0.9998, 0.9998, 0.9999, 0.9999, 0.9999, 1, 1, 1, " +
+        "1, 1, 1, 1, 1)";
 
       function charsetOf(ch) {
         if (ch >= "0" && ch <= "9") return DIGITS;
@@ -365,33 +431,48 @@
         const cs = charsetOf(from);
         return cs && cs === charsetOf(to) ? cs : null;
       }
-      function forwardPath(cs, from, to) {
+      // `cycles` prepends extra full revolutions (faster spin, same duration).
+      function forwardPath(cs, from, to, cycles = 0) {
         const len = cs.length, fi = cs.indexOf(from), ti = cs.indexOf(to);
-        const steps = (ti - fi + len) % len || len;
+        const steps = ((ti - fi + len) % len || len) + cycles * len;
         const rows = [];
         for (let k = 0; k <= steps; k++) rows.push(cs[(fi + k) % len]);
         return rows;
       }
-      function backwardPath(cs, from, to) {
+      function backwardPath(cs, from, to, cycles = 0) {
         const len = cs.length, fi = cs.indexOf(from), ti = cs.indexOf(to);
-        const steps = (fi - ti + len) % len || len;
+        const steps = ((fi - ti + len) % len || len) + cycles * len;
         const rows = [];
-        for (let k = 0; k <= steps; k++) rows.push(cs[(fi - k + len) % len]);
+        for (let k = 0; k <= steps; k++)
+          rows.push(cs[(((fi - k) % len) + len) % len]);
         return rows;
       }
-      function buildRoll(from, to, direction, coin, fill = []) {
+      function buildRoll(from, to, direction, coin, fill = [], cycles = 0) {
         const rollUp = direction === "both" ? coin < 0.5 : direction === "up";
         const cs = sharedCharset(from, to);
         const path = cs
           ? rollUp
-            ? forwardPath(cs, from, to)
-            : backwardPath(cs, from, to)
+            ? forwardPath(cs, from, to, cycles)
+            : backwardPath(cs, from, to, cycles)
           : [from, ...fill, to];
         if (rollUp) return { rows: path, startRow: 0, endRow: path.length - 1 };
         const rows = path.slice().reverse();
         return { rows, startRow: rows.length - 1, endRow: 0 };
       }
       const rollDuration = (coin = Math.random()) => 750 + coin * 300;
+      // Gear-reduction odometer: each digit advances from the previous value by
+      // however many of its own place-steps the value crossed — low places blur,
+      // high places barely move. Revolutions capped so fast scrubs stay sane.
+      const COUNTER_CYCLE_CAP = 6;
+      function odometerDigit(prev, cur, place, cap = COUNTER_CYCLE_CAP) {
+        const p = 10 ** place;
+        const pv = Math.floor(prev / p);
+        const steps = Math.floor(cur / p) - pv;
+        return {
+          from: String((((pv % 10) + 10) % 10)),
+          cycles: Math.min(cap, Math.floor(Math.abs(steps) / 10)),
+        };
+      }
       function hashSeed(str) {
         let h = 2166136261;
         for (let i = 0; i < str.length; i++) {
@@ -519,6 +600,9 @@
         dir = "auto",
         spinPool = DEFAULT_SPIN_POOL,
         randomSpin = false,
+        digitCycles,
+        digitFrom,
+        easing = SLOT_EASING,
         style,
       }) {
         const label = String(text);
@@ -541,12 +625,17 @@
             }
             cellsRef.current = [];
           };
+
+          // Measure + build the reels. Re-runnable so we rebuild once the web
+          // fonts load — boxes first measured against a fallback font would
+          // otherwise leave the cells (and the cents group) mispositioned.
+          const build = () => {
           wipe();
 
           const node = textEl.firstChild;
           if (!node || prefersReducedMotion()) {
             textEl.style.visibility = "visible";
-            return wipe;
+            return;
           }
 
           // Off → a per-value seed makes the roll identical every play; on →
@@ -571,13 +660,29 @@
           // Measure every grapheme's kerned box first (reads), then build all
           // cells (writes), to avoid a forced reflow per glyph.
           const plans = [];
+          let digitIdx = 0;
           for (const { g, start } of toG) {
-            const reel = chooseReel(g, null, letterPool, spinPool, rand);
+            const isDigit = charsetOf(g) === DIGITS;
+            let cycles = 0, reel;
+            if (isDigit) {
+              const i = digitIdx++;
+              cycles = digitCycles?.[i] ?? 0;
+              if (digitFrom) {
+                // Odometer mode: roll from the supplied previous digit; an
+                // unchanged digit with no extra revolutions holds still.
+                const from = digitFrom[i] ?? g;
+                reel = from === g && cycles === 0 ? null : { from, fill: [] };
+              } else {
+                reel = chooseReel(g, null, letterPool, spinPool, rand);
+              }
+            } else {
+              reel = chooseReel(g, null, letterPool, spinPool, rand);
+            }
             if (!reel && g.trim() === "") continue; // whitespace: nothing to show
             const range = document.createRange();
             range.setStart(node, start);
             range.setEnd(node, start + g.length);
-            plans.push({ g, reel, rect: range.getBoundingClientRect() });
+            plans.push({ g, reel, rect: range.getBoundingClientRect(), cycles });
           }
 
           // Hide the measured text; the cells are now the resting glyphs.
@@ -585,7 +690,7 @@
 
           const cells = [];
           const at = (i) => `translateY(${-(i * ROW_H)}em)`;
-          for (const { g, reel, rect } of plans) {
+          for (const { g, reel, rect, cycles } of plans) {
             const cell = document.createElement("span");
             cell.setAttribute("aria-hidden", "true");
             const left = rect.left - hostRect.left;
@@ -623,6 +728,7 @@
               direction,
               rand(),
               reel.fill,
+              cycles,
             );
             // One multi-line text node (each line is a ROW_H-tall reel row)
             // instead of a span per glyph: O(1) DOM nodes per reel.
@@ -641,15 +747,25 @@
             // triggers a layer de-promotion repaint (a final flicker).
             strip.animate(
               [{ transform: at(startRow) }, { transform: at(endRow) }],
-              { duration, easing: SLOT_EASING },
+              { duration, easing },
             );
             layer.appendChild(cell);
             cells.push(cell);
           }
 
           cellsRef.current = cells;
-          return wipe;
-        }, [label, direction, spinPool, randomSpin]);
+          };
+
+          build();
+
+          // Rebuild once fonts are ready (no-op if already loaded), then clean up.
+          let active = true;
+          const fonts = typeof document !== "undefined" ? document.fonts : null;
+          if (fonts && fonts.status !== "loaded")
+            fonts.ready.then(() => { if (active) build(); });
+
+          return () => { active = false; wipe(); };
+        }, [label, direction, spinPool, randomSpin, digitCycles, digitFrom, easing]);
 
         return (
           <span
@@ -708,19 +824,124 @@
         suffix = "",
         direction = "both",
         randomSpin = false,
+        cents = false,
+        counter = false,
         style,
       }) {
-        const formatted =
-          typeof value === "string"
-            ? value
-            : new Intl.NumberFormat(locales, format).format(value);
+        // Track the previous value so counter mode can roll from it (updated
+        // after commit, not during render).
+        const prevRef = useRef(typeof value === "number" ? value : 0);
+        useEffect(() => {
+          if (typeof value === "number") prevRef.current = value;
+        });
+
+        // Memoized so the odometer arrays keep a stable identity across
+        // unrelated re-renders (only changing when the value does), so an
+        // in-progress roll isn't wiped by, e.g., the auto-cycling card above.
+        const plan = useMemo(() => {
+          if (typeof value !== "number" && typeof value !== "bigint") return null;
+          const opts = cents
+            ? { ...format, minimumFractionDigits: 2, maximumFractionDigits: 2 }
+            : format || {};
+          const parts = new Intl.NumberFormat(locales, opts).formatToParts(value);
+          let head = "", frac = "", intDigits = 0;
+          for (const p of parts) {
+            if (p.type === "fraction") frac += p.value;
+            else head += p.value;
+            if (p.type === "integer") intDigits += p.value.length;
+          }
+          const fracDigits = frac.length;
+          const headFrom = [], headCycles = [], fracFrom = [], fracCycles = [];
+          let odometerDir = direction;
+          const odometer =
+            counter && typeof value === "number" && Number.isFinite(value);
+          if (odometer) {
+            const scale = 10 ** fracDigits;
+            const cur = Math.round(value * scale);
+            const prev = Math.round(prevRef.current * scale);
+            odometerDir = cur >= prev ? "up" : "down";
+            let i = 0;
+            for (const p of parts) {
+              if (p.type === "integer")
+                for (const _ of p.value) {
+                  const d = odometerDigit(prev, cur, intDigits - 1 - i++ + fracDigits);
+                  headFrom.push(d.from);
+                  headCycles.push(d.cycles);
+                }
+              else if (p.type === "fraction")
+                for (let k = 0; k < p.value.length; k++) {
+                  const d = odometerDigit(prev, cur, fracDigits - 1 - k);
+                  fracFrom.push(d.from);
+                  fracCycles.push(d.cycles);
+                }
+            }
+          }
+          return {
+            head, frac, headFrom, headCycles, fracFrom, fracCycles,
+            allFrom: [...headFrom, ...fracFrom],
+            allCycles: [...headCycles, ...fracCycles],
+            odometerDir, odometer,
+          };
+        }, [value, format, locales, cents, counter, direction]);
+
+        // A preformatted string passes through verbatim — no part-aware features.
+        if (plan === null) {
+          return (
+            <SlotText
+              text={String(value) + suffix}
+              direction={direction}
+              randomSpin={randomSpin}
+              style={style}
+            />
+          );
+        }
+
+        const { head, frac, odometer, odometerDir } = plan;
+        // Counter mode spins low digits fast; its gentler settle reads better.
+        const easing = counter ? SLOT_EASING_SOFT : undefined;
+
+        // Without the cents treatment the whole number is a single reel.
+        if (!cents || !frac) {
+          return (
+            <SlotText
+              text={head + frac + suffix}
+              direction={odometerDir}
+              randomSpin={randomSpin}
+              digitCycles={odometer ? plan.allCycles : undefined}
+              digitFrom={odometer ? plan.allFrom : undefined}
+              easing={easing}
+              style={style}
+            />
+          );
+        }
+
+        // Cents: a smaller fractional reel baseline-aligned beside the integer
+        // part; one labelled container so it reads as a single number.
         return (
-          <SlotText
-            text={formatted + suffix}
-            direction={direction}
-            randomSpin={randomSpin}
-            style={style}
-          />
+          <span
+            role="img"
+            aria-label={head + frac + suffix}
+            style={{ display: "inline-block", ...style }}
+          >
+            <SlotText
+              text={head}
+              direction={odometerDir}
+              randomSpin={randomSpin}
+              digitCycles={odometer ? plan.headCycles : undefined}
+              digitFrom={odometer ? plan.headFrom : undefined}
+              easing={easing}
+            />
+            <SlotText
+              text={frac}
+              direction={odometerDir}
+              randomSpin={randomSpin}
+              digitCycles={odometer ? plan.fracCycles : undefined}
+              digitFrom={odometer ? plan.fracFrom : undefined}
+              easing={easing}
+              style={{ fontSize: "0.9em" }}
+            />
+            {suffix ? <span>{suffix}</span> : null}
+          </span>
         );
       }
 
@@ -734,9 +955,13 @@
           direction: "Direction",
           dir: { both: "Both", up: "Up", down: "Down" },
           randomSpin: "Random spin",
+          counter: "Counter",
+          scrub: "Value",
           onOff: { off: "Off", on: "On" },
           numberEyebrow: "SlotNumber",
-          numberCtx: "Any number type — currency, percent, compact, negatives — via Intl.NumberFormat. Digits roll; symbols hold.",
+          numberCtx: "Any number type — currency, percent, compact, negatives — via Intl.NumberFormat. Digits roll; the cents roll smaller and bottom-aligned.",
+          counterEyebrow: "SlotNumber · Counter",
+          counterCtx: "Scrub the slider: the low digits blur like a gear-reduction counter while the ten-thousands and up turn slowly. It rolls only while you scrub.",
           letterEyebrow: "SlotLetter",
           letterCtx: "A single character rolling through its alphabet, wrapping around.",
           textEyebrow: "SlotText",
@@ -752,9 +977,13 @@
           direction: "方向",
           dir: { both: "雙向", up: "向上", down: "向下" },
           randomSpin: "隨機滾動",
+          counter: "計數器",
+          scrub: "數值",
           onOff: { off: "關", on: "開" },
           numberEyebrow: "SlotNumber",
-          numberCtx: "任何數字類型——貨幣、百分比、精簡格式、負數——透過 Intl.NumberFormat。數字滾動，符號不動。",
+          numberCtx: "任何數字類型——貨幣、百分比、精簡格式、負數——透過 Intl.NumberFormat。數字滾動；角分以較小字級並靠底對齊滾動。",
+          counterEyebrow: "SlotNumber · 計數器",
+          counterCtx: "拖動滑桿：低位數字像減速齒輪計數器般飛轉，萬位以上則緩緩轉動。僅在拖動時滾動。",
           letterEyebrow: "SlotLetter",
           letterCtx: "單一字元在字母表中循環滾動。",
           textEyebrow: "SlotText",
@@ -767,16 +996,18 @@
       // Usage snippets shown in each card's "?" tooltip (code, not localized).
       const USAGE = {
         number:
-          '<SlotNumber value={1234} format={{ style: "currency", currency: "USD" }} direction="up" />',
+          '<SlotNumber value={1234.56} format={{ style: "currency", currency: "USD" }} cents />',
+        counter:
+          '<SlotNumber value={value} format={{ style: "currency", currency: "USD" }} cents counter />',
         letter: '<SlotLetter char="Q" direction="down" />',
         text: '<SlotText text="東京タワー" direction="both" />',
       };
 
-      const NUMBERS = [1234, 13190, 597, 5970000, 81293, 42];
+      const NUMBERS = [1234.56, 13190.05, 597.99, 5970000.5, 81293.2, 42.07];
       const LETTERS = ["A", "Q", "Z", "M", "E", "R", "S"];
-      // English mode mixes Latin, Japanese, and Traditional Chinese; Mandarin
-      // mode spins through everyday Traditional Chinese words.
-      const WORDS_EN = ["VOYAGE", "QUARTZ", "GARDEN", "東京タワー", "臺灣"];
+      // English mode mixes Latin (incl. a Title-case word), Japanese, and
+      // Traditional Chinese; Mandarin mode spins everyday Traditional Chinese.
+      const WORDS_EN = ["VOYAGE", "Harbor", "QUARTZ", "GARDEN", "東京タワー", "臺灣"];
       const WORDS_ZH = ["春天", "圖書館", "海洋", "音樂會", "故宮"];
       const PAUSE = 1900;
 
@@ -813,11 +1044,11 @@
         );
       }
 
-      function ToggleControl({ value, onChange, t }) {
+      function ToggleControl({ value, onChange, label, t }) {
         return (
           <div>
-            <span className="seg-label">{t.randomSpin}</span>
-            <div className="seg" role="group" aria-label={t.randomSpin}>
+            <span className="seg-label">{label}</span>
+            <div className="seg" role="group" aria-label={label}>
               {[false, true].map((v) => (
                 <button
                   key={String(v)}
@@ -834,6 +1065,29 @@
         );
       }
 
+      // The "?" usage tooltip shared by every card header.
+      function HelpTip({ eyebrow, usage, t }) {
+        const tipId = "tip-" + eyebrow;
+        return (
+          <span className="help">
+            <button
+              type="button"
+              className="help-btn"
+              aria-label={t.usage}
+              aria-describedby={tipId}
+            >
+              <span className="help-dot" aria-hidden="true">
+                ?
+              </span>
+            </button>
+            <span className="tip" role="tooltip" id={tipId}>
+              <span className="tip-label">{t.usage}</span>
+              <code className="tip-code">{usage}</code>
+            </span>
+          </span>
+        );
+      }
+
       function DemoCard({
         eyebrow,
         context,
@@ -845,33 +1099,74 @@
         usage,
         children,
       }) {
-        const tipId = "tip-" + eyebrow;
         return (
           <section className="card">
             <div className="card-head">
               <p className="eyebrow">{eyebrow}</p>
-              <span className="help">
-                <button
-                  type="button"
-                  className="help-btn"
-                  aria-label={t.usage}
-                  aria-describedby={tipId}
-                >
-                  <span className="help-dot" aria-hidden="true">
-                    ?
-                  </span>
-                </button>
-                <span className="tip" role="tooltip" id={tipId}>
-                  <span className="tip-label">{t.usage}</span>
-                  <code className="tip-code">{usage}</code>
-                </span>
-              </span>
+              <HelpTip eyebrow={eyebrow} usage={usage} t={t} />
             </div>
             <div className="hero">{children}</div>
             <p className="context">{context}</p>
             <div className="controls">
               <DirectionControl value={dir} onChange={setDir} t={t} />
-              <ToggleControl value={randomSpin} onChange={setRandomSpin} t={t} />
+              <ToggleControl
+                value={randomSpin}
+                onChange={setRandomSpin}
+                label={t.randomSpin}
+                t={t}
+              />
+            </div>
+          </section>
+        );
+      }
+
+      // e × 10^6 → π × 10^6, in integer cents (avoids slider float drift).
+      const COUNTER_MIN = 271828182; // $2,718,281.82
+      const COUNTER_MAX = 314159265; // $3,141,592.65
+      const MONEY_FMT = { style: "currency", currency: "USD" };
+
+      // Scrubbable odometer. Counter mode rolls from the previous value, so it
+      // sits still on load and rolls only as the slider moves — the low digits
+      // blurring while the ten-thousands and up barely turn.
+      function CounterDemo({ t }) {
+        const [cents, setCents] = useState(COUNTER_MIN);
+        const [counter, setCounter] = useState(true);
+        return (
+          <section className="card">
+            <div className="card-head">
+              <p className="eyebrow">{t.counterEyebrow}</p>
+              <HelpTip eyebrow={t.counterEyebrow} usage={USAGE.counter} t={t} />
+            </div>
+            <div className="hero">
+              <SlotNumber
+                value={cents / 100}
+                format={MONEY_FMT}
+                cents
+                counter={counter}
+                randomSpin={false}
+              />
+            </div>
+            <p className="context">{t.counterCtx}</p>
+            <div className="controls">
+              <div className="slider-wrap">
+                <span className="seg-label">{t.scrub}</span>
+                <input
+                  type="range"
+                  className="slider"
+                  min={COUNTER_MIN}
+                  max={COUNTER_MAX}
+                  step="1"
+                  value={cents}
+                  onChange={(e) => setCents(+e.target.value)}
+                  aria-label={t.scrub}
+                />
+              </div>
+              <ToggleControl
+                value={counter}
+                onChange={setCounter}
+                label={t.counter}
+                t={t}
+              />
             </div>
           </section>
         );
@@ -953,15 +1248,14 @@
             >
               <SlotNumber
                 value={numValue}
-                format={{
-                  style: "currency",
-                  currency: "USD",
-                  maximumFractionDigits: 0,
-                }}
+                format={{ style: "currency", currency: "USD" }}
+                cents
                 direction={numDir}
                 randomSpin={numRandom}
               />
             </DemoCard>
+
+            <CounterDemo t={t} />
 
             <DemoCard
               eyebrow={t.textEyebrow}
