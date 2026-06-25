@@ -50,7 +50,10 @@ const SEGMENTER =
 /** Split into grapheme clusters with their UTF-16 offsets (for Range probing). */
 function segmentWithOffsets(text: string): Grapheme[] {
   const out: Grapheme[] = [];
-  if (SEGMENTER) {
+  // Fast path: all-ASCII text (numbers, plain Latin) has no grapheme clusters,
+  // so a one-code-unit-per-char split matches the segmenter without its cost —
+  // worth skipping for the per-frame rebuilds a scrubbing counter triggers.
+  if (SEGMENTER && /[\u0080-\uFFFF]/.test(text)) {
     for (const s of SEGMENTER.segment(text))
       out.push({ g: s.segment, start: s.index });
     return out;
@@ -258,7 +261,9 @@ export function SlotText({
           continue;
         }
 
-        cell.style.cssText = `position:absolute;left:${left}px;top:${top - lead}px;width:${rect.width}px;height:${ROW_H}em;overflow:hidden;background:${bg}`;
+        // `contain:strict` lets the engine clip the (often very tall) strip to
+        // this fixed-size window and skip rasterizing its off-screen rows.
+        cell.style.cssText = `position:absolute;left:${left}px;top:${top - lead}px;width:${rect.width}px;height:${ROW_H}em;overflow:hidden;contain:strict;background:${bg}`;
         const { rows, startRow, endRow } = buildRoll(
           reel.from,
           g,
