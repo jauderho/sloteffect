@@ -55,6 +55,14 @@ export const SLOT_EASING_SOFT =
   "0.9995, 0.9996, 0.9997, 0.9998, 0.9998, 0.9999, 0.9999, 0.9999, 1, 1, 1, " +
   "1, 1, 1, 1, 1)";
 
+/**
+ * Fraction of a roll's travel the spring easings overshoot their landing row
+ * ({@link SLOT_EASING} peaks at ~1.054, i.e. 5.4%). The strip is padded past the
+ * landing glyph by this much so the overshoot reveals the reel's continuation
+ * instead of empty space. See `SlotText`'s strip builder.
+ */
+export const OVERSHOOT_HEADROOM = 0.06;
+
 /** Base roll duration (ms) before per-reel jitter. */
 export const BASE_DURATION = 750;
 /** Maximum extra duration (ms) added per reel so columns settle asynchronously. */

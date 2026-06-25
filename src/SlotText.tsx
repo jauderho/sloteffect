@@ -24,6 +24,7 @@ import {
   glyphKind,
   hashSeed,
   makeRng,
+  OVERSHOOT_HEADROOM,
   prefersReducedMotion,
   ROW_H,
   rollDuration,
@@ -226,7 +227,22 @@ export function SlotText({
       textEl.style.visibility = "hidden";
 
       const cells: HTMLSpanElement[] = [];
-      const at = (i: number) => `translateY(${-(i * ROW_H)}em)`;
+      // Each rolling reel is one multi-line text node (O(1) DOM nodes per reel,
+      // ~30× cheaper to build than a span per row — which matters for the long
+      // strips counter mode spins through). Its rows are spaced by the font's
+      // real line box, which can exceed `line-height` (notably Safari/CoreText
+      // with tall serifs), so the strip is stepped by the *measured* row advance
+      // rather than an assumed ROW_H — the landing row then lines up in every
+      // engine. Build every strip first, then measure (one batched layout read),
+      // then position + animate, so a long string never thrashes layout.
+      interface Reel {
+        strip: HTMLSpanElement;
+        rowCount: number;
+        landRow: number;
+        firstRow: number;
+        duration: number;
+      }
+      const reels: Reel[] = [];
       for (const { g, reel, rect, cycles } of plans) {
         const cell = document.createElement("span");
         cell.setAttribute("aria-hidden", "true");
@@ -251,29 +267,58 @@ export function SlotText({
           reel.fill,
           cycles,
         );
-        // One multi-line text node — each line is a ROW_H-tall reel row — instead
-        // of a span per glyph. Same layout, but O(1) DOM nodes per reel instead of
-        // O(path length), so long rolls cost no extra nodes.
+        // The spring easing overshoots its landing row by a fraction of the
+        // roll's travel, so pad the strip just past `endRow` (in the travel
+        // direction) with the landing glyph. The overshoot then slides through
+        // that same glyph — a seamless soft bounce — instead of revealing empty
+        // space beyond the last row. `endRow`/`startRow` shift when padding the
+        // leading (down-roll) side so the rest position is unchanged.
+        const target = rows[endRow] as string;
+        const guard = Math.ceil(
+          Math.abs(endRow - startRow) * OVERSHOOT_HEADROOM,
+        );
+        let landRow = endRow;
+        let firstRow = startRow;
+        if (endRow >= startRow) {
+          for (let k = 0; k < guard; k++) rows.push(target);
+        } else {
+          for (let k = 0; k < guard; k++) rows.unshift(target);
+          landRow += guard;
+          firstRow += guard;
+        }
         const strip = document.createElement("span");
         strip.style.cssText = `position:absolute;left:0;top:0;width:100%;white-space:pre;line-height:${ROW_H};will-change:transform`;
         strip.textContent = rows.join("\n");
         cell.appendChild(strip);
-        // Land on the final glyph and stay — the reel itself is the rest state.
-        strip.style.transform = at(endRow);
-        // randomSpin staggers each character's settle; otherwise all settle as one.
-        const duration = rollDuration(randomSpin ? Math.random() : STEADY_COIN);
-        // Keep the strip promoted (will-change stays) so finishing the roll never
-        // triggers a layer de-promotion repaint — which reads as a final flicker.
-        strip.animate(
-          [{ transform: at(startRow) }, { transform: at(endRow) }],
-          {
-            duration,
-            easing,
-          },
-        );
         layer.appendChild(cell);
         cells.push(cell);
+        // randomSpin staggers each character's settle; otherwise all settle as one.
+        reels.push({
+          strip,
+          rowCount: rows.length,
+          landRow,
+          firstRow,
+          duration: rollDuration(randomSpin ? Math.random() : STEADY_COIN),
+        });
       }
+
+      // Reads (one batched layout): the rendered row advance per strip — total
+      // height over row count, so it reflects the real line box, not ROW_H.
+      const advances = reels.map(
+        (r) => r.strip.getBoundingClientRect().height / r.rowCount,
+      );
+      // Writes: land on the final glyph and stay (the reel itself is the rest
+      // state), then play the roll. Keep the strip promoted (will-change stays)
+      // so finishing never triggers a de-promotion repaint — which would flicker.
+      reels.forEach((r, i) => {
+        const adv = advances[i] as number;
+        const at = (row: number) => `translateY(${-(row * adv)}px)`;
+        r.strip.style.transform = at(r.landRow);
+        r.strip.animate(
+          [{ transform: at(r.firstRow) }, { transform: at(r.landRow) }],
+          { duration: r.duration, easing },
+        );
+      });
 
       cellsRef.current = cells;
     };
