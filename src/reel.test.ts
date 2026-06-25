@@ -6,20 +6,38 @@ import {
   chooseReel,
   DEFAULT_SPIN_POOL,
   DIGITS,
+  FALLBACK_EASING,
   glyphKind,
   hashSeed,
   isEmoji,
   isIdeograph,
   LOWER,
   makeRng,
+  OVERSHOOT_HEADROOM,
   odometerDigit,
+  padOvershoot,
   randomGlyph,
   rollDuration,
+  SLOT_EASING,
+  SLOT_EASING_SOFT,
   SPIN_LENGTH,
   STATIC_KINDS,
+  safeEasing,
   sampleSpin,
+  segmentWithOffsets,
+  supportsLinearEasing,
   UPPER,
 } from "./reel";
+
+/** Max value in a CSS `linear(...)` easing — its peak overshoot is this − 1. */
+function linearPeak(easing: string): number {
+  return Math.max(
+    ...easing
+      .slice("linear(".length, -1)
+      .split(",")
+      .map((n) => Number.parseFloat(n)),
+  );
+}
 
 describe("charsetOf", () => {
   it("classifies digits, upper, lower, and other", () => {
@@ -315,5 +333,144 @@ describe("rollDuration", () => {
   it("is BASE at coin 0 and BASE+JITTER at coin 1", () => {
     expect(rollDuration(0)).toBe(750);
     expect(rollDuration(1)).toBe(1050);
+  });
+});
+
+describe("padOvershoot — guard rows so the spring bounce never reveals blank", () => {
+  it("appends the landing glyph for an up-roll, leaving the rest position", () => {
+    // "3"→"7" up: rows 3,4,5,6,7 (start 0, land 4), travel 4 → 1 guard row.
+    const { rows, startRow, endRow } = buildRoll("3", "7", "up", 0);
+    const padded = padOvershoot([...rows], startRow, endRow);
+    expect(padded.firstRow).toBe(0);
+    expect(padded.landRow).toBe(4);
+    expect(padded.rows[padded.landRow]).toBe("7");
+    // Guard rows sit *past* the landing glyph and repeat it (seamless bounce).
+    expect(padded.rows.slice(5)).toEqual(["7"]);
+    expect(padded.rows[padded.firstRow]).toBe("3");
+  });
+
+  it("prepends guard rows for a down-roll and shifts both indices", () => {
+    // "7"→"3" down: rows 3,4,5,6,7 (start 4, land 0), travel 4 → 1 guard row.
+    const { rows, startRow, endRow } = buildRoll("7", "3", "down", 0);
+    const padded = padOvershoot([...rows], startRow, endRow);
+    expect(padded.landRow).toBe(1); // shifted by the 1 prepended guard
+    expect(padded.firstRow).toBe(5);
+    expect(padded.rows[padded.landRow]).toBe("3"); // still lands on "3"
+    expect(padded.rows[padded.firstRow]).toBe("7"); // still starts on "7"
+    expect(padded.rows[0]).toBe("3"); // guard above the landing row is "3"
+  });
+
+  it("scales the guard count with the roll's travel", () => {
+    const long = buildRoll("0", "9", "up", 0, [], COUNTER_CYCLE_CAP); // ~69 rows
+    const travel = long.endRow - long.startRow;
+    const padded = padOvershoot([...long.rows], long.startRow, long.endRow);
+    expect(padded.rows.length - long.rows.length).toBe(
+      Math.ceil(travel * OVERSHOOT_HEADROOM),
+    );
+    expect(padded.rows.length - long.rows.length).toBeGreaterThan(1);
+    // Every padded-on row repeats the landing glyph.
+    for (const g of padded.rows.slice(long.rows.length)) expect(g).toBe("9");
+  });
+
+  it("guard count always covers the spring easings' real overshoot", () => {
+    // If an easing is ever retuned to overshoot more than OVERSHOOT_HEADROOM,
+    // the guard rows would be too few and the bounce would reveal blank space.
+    for (const travel of [4, 9, 20, 69]) {
+      const overshootRows = travel * (linearPeak(SLOT_EASING) - 1);
+      const guard = Math.ceil(travel * OVERSHOOT_HEADROOM);
+      expect(guard).toBeGreaterThanOrEqual(overshootRows);
+    }
+  });
+});
+
+describe("OVERSHOOT_HEADROOM vs the spring easings", () => {
+  it("headroom is at least the peak overshoot of both easings", () => {
+    expect(linearPeak(SLOT_EASING) - 1).toBeLessThanOrEqual(OVERSHOOT_HEADROOM);
+    expect(linearPeak(SLOT_EASING_SOFT) - 1).toBeLessThanOrEqual(
+      OVERSHOOT_HEADROOM,
+    );
+  });
+
+  it("both easings start at 0 and settle at 1", () => {
+    for (const e of [SLOT_EASING, SLOT_EASING_SOFT]) {
+      const pts = e
+        .slice("linear(".length, -1)
+        .split(",")
+        .map((n) => Number.parseFloat(n));
+      expect(pts[0]).toBe(0);
+      expect(pts[pts.length - 1]).toBe(1);
+    }
+  });
+});
+
+describe("safeEasing — CSS linear() fallback for old engines", () => {
+  it("passes linear() through when the engine supports it", () => {
+    expect(safeEasing("linear(0, 0.5, 1)", true)).toBe("linear(0, 0.5, 1)");
+    expect(safeEasing(SLOT_EASING, true)).toBe(SLOT_EASING);
+  });
+
+  it("swaps linear() for the bezier fallback when unsupported", () => {
+    expect(safeEasing("linear(0, 0.5, 1)", false)).toBe(FALLBACK_EASING);
+    expect(safeEasing(SLOT_EASING, false)).toBe(FALLBACK_EASING);
+    expect(safeEasing(SLOT_EASING_SOFT, false)).toBe(FALLBACK_EASING);
+  });
+
+  it("leaves non-linear easings alone even when linear() is unsupported", () => {
+    expect(safeEasing("ease", false)).toBe("ease");
+    expect(safeEasing("cubic-bezier(.1,.2,.3,.4)", false)).toBe(
+      "cubic-bezier(.1,.2,.3,.4)",
+    );
+  });
+
+  it("supportsLinearEasing returns a boolean and never throws", () => {
+    // Must degrade gracefully where `CSS`/`CSS.supports` is absent (SSR, the
+    // test runtime) rather than throw — that's the whole point of the guard.
+    expect(typeof supportsLinearEasing()).toBe("boolean");
+  });
+
+  it("the fallback bezier itself has no overshoot (control y ≤ 1)", () => {
+    const m = FALLBACK_EASING.match(/cubic-bezier\(([^)]+)\)/);
+    expect(m).not.toBeNull();
+    const [, y1, , y2] = (m?.[1] ?? "")
+      .split(",")
+      .map((n) => Number.parseFloat(n));
+    expect(y1).toBeLessThanOrEqual(1);
+    expect(y2).toBeLessThanOrEqual(1);
+  });
+});
+
+describe("segmentWithOffsets", () => {
+  it("splits all-ASCII text one code unit per cluster (the fast path)", () => {
+    const out = segmentWithOffsets("$1,234.56");
+    expect(out.map((s) => s.g).join("")).toBe("$1,234.56");
+    expect(out).toHaveLength(9);
+    expect(out.map((s) => s.start)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+  });
+
+  it("segments CJK and keeps correct offsets", () => {
+    const out = segmentWithOffsets("東京タワー");
+    expect(out.map((s) => s.g)).toEqual(["東", "京", "タ", "ワ", "ー"]);
+    expect(out.map((s) => s.start)).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it("offsets always reconstruct the source slice for every cluster", () => {
+    for (const text of ["$1,234.56", "東京タワー", "A中b", "Z9", "🍒🔔", ""]) {
+      for (const { g, start } of segmentWithOffsets(text)) {
+        expect(text.slice(start, start + g.length)).toBe(g);
+      }
+      // No glyph is dropped: concatenation round-trips.
+      expect(
+        segmentWithOffsets(text)
+          .map((s) => s.g)
+          .join(""),
+      ).toBe(text);
+    }
+  });
+
+  it("keeps surrogate-pair (astral) code points intact", () => {
+    // 𝟙 (U+1D7D9) is a 2-code-unit math digit — must stay one cluster.
+    const out = segmentWithOffsets("a𝟙b");
+    expect(out.map((s) => s.g)).toEqual(["a", "𝟙", "b"]);
+    expect(out[2]?.start).toBe(3); // "a"(1) + surrogate pair(2)
   });
 });

@@ -56,6 +56,38 @@ export const SLOT_EASING_SOFT =
   "1, 1, 1, 1, 1)";
 
 /**
+ * Cubic-bezier fallback for engines without CSS `linear()` easing (Firefox
+ * <112, Safari <17.2, Chrome <113), where `Element.animate()` throws on a
+ * `linear()` string. A clean decelerate with no overshoot, so it also stays
+ * within the strip's overshoot headroom (never reveals blank past the landing
+ * row); old engines simply lose the spring bounce.
+ */
+export const FALLBACK_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
+
+/** True when the engine can parse CSS `linear()` easing functions. */
+export function supportsLinearEasing(): boolean {
+  return (
+    typeof CSS !== "undefined" &&
+    typeof CSS.supports === "function" &&
+    CSS.supports("transition-timing-function", "linear(0, 1)")
+  );
+}
+
+/**
+ * Swap a `linear()` easing for {@link FALLBACK_EASING} on engines that cannot
+ * parse it — otherwise `Element.animate()` throws and no reel renders. Any
+ * non-`linear()` easing (including a caller's own) passes through unchanged.
+ */
+export function safeEasing(
+  easing: string,
+  supportsLinear: boolean = supportsLinearEasing(),
+): string {
+  return !supportsLinear && easing.startsWith("linear(")
+    ? FALLBACK_EASING
+    : easing;
+}
+
+/**
  * Fraction of a roll's travel the spring easings overshoot their landing row
  * ({@link SLOT_EASING} peaks at ~1.054, i.e. 5.4%). The strip is padded past the
  * landing glyph by this much so the overshoot reveals the reel's continuation
@@ -160,6 +192,44 @@ export function buildRoll(
   if (rollUp) return { rows: path, startRow: 0, endRow: path.length - 1 };
   const rows = path.slice().reverse();
   return { rows, startRow: rows.length - 1, endRow: 0 };
+}
+
+/** A roll strip padded for overshoot, plus the start/land row indices to use. */
+export interface PaddedRoll {
+  rows: string[];
+  /** Row visible at the start of the animation (the `from` glyph). */
+  firstRow: number;
+  /** Row the reel lands on and rests at (the `to` glyph). */
+  landRow: number;
+}
+
+/**
+ * Pad a roll's `rows` just past the landing row, in the travel direction, with
+ * the landing glyph — so the spring easing's overshoot slides through that same
+ * glyph instead of revealing empty space beyond the strip (a seamless bounce).
+ * The guard count scales with the roll's travel (see {@link OVERSHOOT_HEADROOM}).
+ * An up-roll (`endRow >= startRow`) appends the guard rows; a down-roll prepends
+ * them and shifts both indices so the rest position is unchanged. Mutates and
+ * returns `rows`.
+ */
+export function padOvershoot(
+  rows: string[],
+  startRow: number,
+  endRow: number,
+  headroom: number = OVERSHOOT_HEADROOM,
+): PaddedRoll {
+  const target = rows[endRow] as string;
+  const guard = Math.ceil(Math.abs(endRow - startRow) * headroom);
+  let landRow = endRow;
+  let firstRow = startRow;
+  if (endRow >= startRow) {
+    for (let k = 0; k < guard; k++) rows.push(target);
+  } else {
+    for (let k = 0; k < guard; k++) rows.unshift(target);
+    landRow += guard;
+    firstRow += guard;
+  }
+  return { rows, firstRow, landRow };
 }
 
 /** Number of random glyphs an ideograph spins through before settling. */
@@ -350,4 +420,40 @@ export function prefersReducedMotion(): boolean {
     typeof window !== "undefined" &&
     !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
   );
+}
+
+/** A grapheme cluster paired with its UTF-16 start offset in the source string. */
+export interface Grapheme {
+  g: string;
+  start: number;
+}
+
+// One grapheme segmenter for the whole module — constructing one per call is
+// surprisingly costly, and it is stateless, so it is safe to reuse.
+const SEGMENTER =
+  typeof Intl !== "undefined" && "Segmenter" in Intl
+    ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
+    : null;
+
+/**
+ * Split `text` into grapheme clusters with their UTF-16 offsets (for Range
+ * probing). All-ASCII text (numbers, plain Latin) has no grapheme clusters, so
+ * it takes a one-code-unit-per-char fast path that matches the segmenter without
+ * its per-call cost — worth skipping for a scrubbing counter's per-frame
+ * rebuilds. Non-ASCII (CJK, emoji, combining marks) uses the segmenter when
+ * available, else the same per-code-point split.
+ */
+export function segmentWithOffsets(text: string): Grapheme[] {
+  const out: Grapheme[] = [];
+  if (SEGMENTER && /[\u0080-\uFFFF]/.test(text)) {
+    for (const s of SEGMENTER.segment(text))
+      out.push({ g: s.segment, start: s.index });
+    return out;
+  }
+  let i = 0;
+  for (const ch of text) {
+    out.push({ g: ch, start: i });
+    i += ch.length;
+  }
+  return out;
 }

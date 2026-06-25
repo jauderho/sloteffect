@@ -24,47 +24,18 @@ import {
   glyphKind,
   hashSeed,
   makeRng,
-  OVERSHOOT_HEADROOM,
+  padOvershoot,
   prefersReducedMotion,
   ROW_H,
   rollDuration,
   SLOT_EASING,
   type SlotDirection,
+  safeEasing,
+  segmentWithOffsets,
 } from "./reel";
 
 /** Steady (un-jittered) roll duration used when `randomSpin` is off. */
 const STEADY_COIN = 0.5;
-
-interface Grapheme {
-  g: string;
-  start: number;
-}
-
-// One grapheme segmenter for the whole module — constructing one per call is
-// surprisingly costly, and it is stateless, so it is safe to reuse.
-const SEGMENTER =
-  typeof Intl !== "undefined" && "Segmenter" in Intl
-    ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
-    : null;
-
-/** Split into grapheme clusters with their UTF-16 offsets (for Range probing). */
-function segmentWithOffsets(text: string): Grapheme[] {
-  const out: Grapheme[] = [];
-  // Fast path: all-ASCII text (numbers, plain Latin) has no grapheme clusters,
-  // so a one-code-unit-per-char split matches the segmenter without its cost —
-  // worth skipping for the per-frame rebuilds a scrubbing counter triggers.
-  if (SEGMENTER && /[\u0080-\uFFFF]/.test(text)) {
-    for (const s of SEGMENTER.segment(text))
-      out.push({ g: s.segment, start: s.index });
-    return out;
-  }
-  let i = 0;
-  for (const ch of text) {
-    out.push({ g: ch, start: i });
-    i += ch.length;
-  }
-  return out;
-}
 
 /** Nearest opaque background color, so a rolling reel hides the glyph beneath it. */
 function resolveBackground(el: HTMLElement): string {
@@ -264,7 +235,7 @@ export function SlotText({
         // `contain:strict` lets the engine clip the (often very tall) strip to
         // this fixed-size window and skip rasterizing its off-screen rows.
         cell.style.cssText = `position:absolute;left:${left}px;top:${top - lead}px;width:${rect.width}px;height:${ROW_H}em;overflow:hidden;contain:strict;background:${bg}`;
-        const { rows, startRow, endRow } = buildRoll(
+        const roll = buildRoll(
           reel.from,
           g,
           direction,
@@ -272,25 +243,14 @@ export function SlotText({
           reel.fill,
           cycles,
         );
-        // The spring easing overshoots its landing row by a fraction of the
-        // roll's travel, so pad the strip just past `endRow` (in the travel
-        // direction) with the landing glyph. The overshoot then slides through
-        // that same glyph — a seamless soft bounce — instead of revealing empty
-        // space beyond the last row. `endRow`/`startRow` shift when padding the
-        // leading (down-roll) side so the rest position is unchanged.
-        const target = rows[endRow] as string;
-        const guard = Math.ceil(
-          Math.abs(endRow - startRow) * OVERSHOOT_HEADROOM,
+        // Pad the strip past its landing row with the landing glyph so the
+        // spring easing's overshoot slides through that glyph instead of empty
+        // space (see padOvershoot). `firstRow`/`landRow` are the start/rest rows.
+        const { rows, firstRow, landRow } = padOvershoot(
+          roll.rows,
+          roll.startRow,
+          roll.endRow,
         );
-        let landRow = endRow;
-        let firstRow = startRow;
-        if (endRow >= startRow) {
-          for (let k = 0; k < guard; k++) rows.push(target);
-        } else {
-          for (let k = 0; k < guard; k++) rows.unshift(target);
-          landRow += guard;
-          firstRow += guard;
-        }
         const strip = document.createElement("span");
         strip.style.cssText = `position:absolute;left:0;top:0;width:100%;white-space:pre;line-height:${ROW_H};will-change:transform`;
         strip.textContent = rows.join("\n");
@@ -315,13 +275,15 @@ export function SlotText({
       // Writes: land on the final glyph and stay (the reel itself is the rest
       // state), then play the roll. Keep the strip promoted (will-change stays)
       // so finishing never triggers a de-promotion repaint — which would flicker.
+      // safeEasing falls back from CSS linear() on engines that can't parse it.
+      const settle = safeEasing(easing);
       reels.forEach((r, i) => {
         const adv = advances[i] as number;
         const at = (row: number) => `translateY(${-(row * adv)}px)`;
         r.strip.style.transform = at(r.landRow);
         r.strip.animate(
           [{ transform: at(r.firstRow) }, { transform: at(r.landRow) }],
-          { duration: r.duration, easing },
+          { duration: r.duration, easing: settle },
         );
       });
 

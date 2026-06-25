@@ -421,6 +421,16 @@
         "0.9995, 0.9996, 0.9997, 0.9998, 0.9998, 0.9999, 0.9999, 0.9999, 1, 1, 1, " +
         "1, 1, 1, 1, 1)";
 
+      // Engines without CSS linear() (Firefox <112, Safari <17.2, Chrome <113)
+      // throw on it in Element.animate(); fall back to a no-overshoot bezier.
+      const FALLBACK_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
+      const supportsLinearEasing = () =>
+        typeof CSS !== "undefined" &&
+        typeof CSS.supports === "function" &&
+        CSS.supports("transition-timing-function", "linear(0, 1)");
+      const safeEasing = (easing, ok = supportsLinearEasing()) =>
+        !ok && easing.startsWith("linear(") ? FALLBACK_EASING : easing;
+
       function charsetOf(ch) {
         if (ch >= "0" && ch <= "9") return DIGITS;
         if (ch >= "A" && ch <= "Z") return UPPER;
@@ -790,13 +800,15 @@
           // Writes: land on the final glyph and stay (the reel is the rest
           // state), then play the roll. Keep the strip promoted (will-change
           // stays) so finishing never triggers a de-promotion flicker.
+          // safeEasing falls back from linear() where the engine can't parse it.
+          const settle = safeEasing(easing);
           reels.forEach((r, i) => {
             const adv = advances[i];
             const at = (row) => `translateY(${-(row * adv)}px)`;
             r.strip.style.transform = at(r.landRow);
             r.strip.animate(
               [{ transform: at(r.firstRow) }, { transform: at(r.landRow) }],
-              { duration: r.duration, easing },
+              { duration: r.duration, easing: settle },
             );
           });
 
