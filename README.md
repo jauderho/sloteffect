@@ -28,7 +28,10 @@
 ## Install
 
 ```sh
-bun add sloteffect       # or: npm i sloteffect / pnpm add sloteffect / yarn add sloteffect
+bun add sloteffect
+npm i sloteffect
+pnpm add sloteffect
+yarn add sloteffect
 ```
 
 React 18 or 19 is a peer dependency.
