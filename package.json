@@ -1,6 +1,6 @@
 {
   "name": "sloteffect",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Slot-machine-style rolls for numbers, letters, and text in React. Dependency-free, accessible, reduced-motion aware.",
   "keywords": [
     "react",
