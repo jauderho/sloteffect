@@ -28,6 +28,8 @@
 ## Install
 
 ```sh
+# https://www.npmjs.com/package/sloteffect
+
 bun add sloteffect
 npm i sloteffect
 pnpm add sloteffect
