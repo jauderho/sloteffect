@@ -46,6 +46,20 @@ jobs:
         with:
           persist-credentials: false
 
+      # Fail fast if the tag and package.json disagree, so a mistagged release
+      # can never publish the wrong version. (frozen-lockfile + build below guard
+      # the lockfile and buildability.)
+      - name: Verify version matches release tag
+        if: github.event_name == 'release'
+        run: |
+          pkg="$(jq -r .version package.json)"
+          tag="${GITHUB_REF_NAME#v}"
+          echo "package.json=$pkg  tag=$tag"
+          if [ "$pkg" != "$tag" ]; then
+            echo "::error::package.json version ($pkg) does not match release tag ($tag)"
+            exit 1
+          fi
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:

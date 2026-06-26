@@ -4,11 +4,16 @@
   "description": "Slot-machine-style rolls for numbers, letters, and text in React. Dependency-free, accessible, reduced-motion aware.",
   "keywords": [
     "react",
+    "react-component",
     "animation",
     "slot-machine",
-    "number",
-    "counter",
     "odometer",
+    "counter",
+    "countup",
+    "number",
+    "animated-numbers",
+    "number-animation",
+    "text-animation",
     "tabular-nums",
     "ui"
   ],
