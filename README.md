@@ -155,20 +155,6 @@ Every component accepts `direction`:
 
 ---
 
-## Publishing (maintainers)
-
-Releases publish to npm via **OIDC Trusted Publishing** with provenance — no npm
-token is stored in the repo. One-time setup on npmjs.com:
-
-1. Publish `0.1.0` once manually (`npm publish --access public`) so the package
-   exists, **or** configure a pending trusted publisher before the first release.
-2. On the package page → **Settings → Publishing access → Trusted publisher**,
-   add a **GitHub Actions** publisher: this repository + workflow file
-   `publish.yml`.
-3. Thereafter, publishing a **GitHub Release** runs
-   [`.github/workflows/publish.yml`](.github/workflows/publish.yml), which builds
-   and runs `npm publish --provenance` using a short-lived OIDC credential.
-
 ## Development
 
 ```sh
