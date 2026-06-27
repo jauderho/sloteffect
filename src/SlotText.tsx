@@ -14,7 +14,7 @@
  * spin through random in-script glyphs; symbols (currency, separators, spaces)
  * and emoji never spin. Honors `prefers-reduced-motion`.
  */
-import { type CSSProperties, useLayoutEffect, useRef } from "react";
+import { type CSSProperties, useEffect, useLayoutEffect, useRef } from "react";
 import {
   buildRoll,
   charsetOf,
@@ -105,6 +105,10 @@ export function SlotText({
   const textRef = useRef<HTMLSpanElement>(null);
   const layerRef = useRef<HTMLSpanElement>(null);
   const cellsRef = useRef<HTMLSpanElement[]>([]);
+  // The surface color baked onto the resting reel cells. Tracked so a theme
+  // switch (which keeps the value, so the reels aren't rebuilt) can be detected
+  // and repainted in place.
+  const bgRef = useRef<string>("");
 
   useLayoutEffect(() => {
     const host = hostRef.current;
@@ -141,6 +145,7 @@ export function SlotText({
       const toG = segmentWithOffsets(label);
       const hostRect = host.getBoundingClientRect();
       const bg = resolveBackground(host);
+      bgRef.current = bg;
       // A grapheme's Range rect is its em box, but a reel row centers its glyph
       // within ROW_H (adding half-leading). Lift each cell by that half-leading so
       // the reel sits exactly on the measured glyph box.
@@ -306,6 +311,39 @@ export function SlotText({
       wipe();
     };
   }, [label, direction, spinPool, randomSpin, digitCycles, digitFrom, easing]);
+
+  // Keep the baked surface color in sync with the surroundings. A reel cell is
+  // painted with the nearest opaque background so it hides the glyph beneath it;
+  // because the reels are only rebuilt when the *value* changes, a theme switch
+  // (same value, new surface) would otherwise leave every cell in the previous
+  // theme's color. A theme is usually applied by flipping a class or data-attr
+  // on <html>/<body>, often from a parent effect that runs *after* this
+  // component's effects — so we can't catch it within the same render. Instead,
+  // observe those roots (and the system color-scheme) and repaint the resting
+  // cells in place when the resolved surface actually moves — no re-roll. The
+  // background-equality guard makes unrelated mutations a cheap no-op.
+  useEffect(() => {
+    const repaint = () => {
+      const host = hostRef.current;
+      if (!host || cellsRef.current.length === 0) return;
+      const bg = resolveBackground(host);
+      if (bg === bgRef.current) return;
+      bgRef.current = bg;
+      for (const c of cellsRef.current) {
+        if (c.style.background) c.style.background = bg;
+      }
+    };
+    const obs = new MutationObserver(repaint);
+    const opts = { attributes: true };
+    obs.observe(document.documentElement, opts);
+    if (document.body) obs.observe(document.body, opts);
+    const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
+    mq?.addEventListener?.("change", repaint);
+    return () => {
+      obs.disconnect();
+      mq?.removeEventListener?.("change", repaint);
+    };
+  }, []);
 
   return (
     <span
