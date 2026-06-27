@@ -23,8 +23,18 @@ fi
 git switch main
 git pull --ff-only
 
-# Keep bun.lock in sync with package.json before tagging; commit if it drifted.
+# Install dependencies first — the showcase build and the checks below need them.
 bun install
+
+# Regenerate the showcase (index.html) from src/ so the published demo can never
+# drift from the package; commit it if it changed.
+bun run build:index
+if ! git diff --quiet -- index.html; then
+  git add index.html
+  git commit -S -s -m "chore: rebuild showcase index.html"
+fi
+
+# Keep bun.lock in sync with package.json before tagging; commit if it drifted.
 if ! git diff --quiet -- bun.lock; then
   git add bun.lock
   git commit -S -s -m "chore: sync bun.lock"
