@@ -397,612 +397,705 @@
     <script type="text/babel" data-presets="react">
       const { useState, useEffect, useMemo, useRef, useLayoutEffect } = React;
 
-      // ---- sloteffect (inline port of src/, kept in sync) -------------------
+      // === BEGIN GENERATED: sloteffect inline port — from src/ via `bun run build:index`; do not edit ===
+      // ---- reel.ts -----------------------------------------------------------
+      /**
+       * sloteffect — shared reel primitives.
+       *
+       * The slot roll is built lazily: at rest a character is a single glyph, and the
+       * rolling strip (the sequence of glyphs travelled through) is computed only for
+       * the duration of a transition. `buildRoll` returns that minimal sequence plus
+       * the start/end row to show, so the component never renders a full charset.
+       *
+       * For ordered charsets (digits, same-case Latin letters) the roll travels the
+       * charset in order, wrapping around — the authentic reel. For any other glyph
+       * pair (other scripts, emoji, punctuation, cross-charset) it is a clean two-row
+       * flip, so SlotText works for arbitrary text in any writing direction.
+       */
+      /** Ordered charsets the reels roll through in sequence. */
       const DIGITS = "0123456789";
       const UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
       const LOWER = "abcdefghijklmnopqrstuvwxyz";
+      /**
+       * Row height in `em`. Slightly taller than 1em so ascenders, descenders, CJK,
+       * and emoji are not clipped by the reel's `overflow: hidden` window.
+       */
       const ROW_H = 1.3;
-      const SLOT_EASING =
-        "linear(0, 0.0208, 0.0752, 0.1525, 0.2439, 0.3422, 0.4417, 0.5382, 0.6286, " +
-        "0.711, 0.7839, 0.847, 0.9002, 0.944, 0.9789, 1.0058, 1.0257, 1.0395, " +
-        "1.0483, 1.0529, 1.0543, 1.0532, 1.0502, 1.046, 1.041, 1.0357, 1.0303, " +
-        "1.0251, 1.0202, 1.0157, 1.0117, 1.0083, 1.0054, 1.003, 1.0011, 0.9997, " +
-        "0.9986, 0.9979, 0.9974, 0.9971, 0.9971, 0.9971, 0.9973, 0.9975, 0.9978, " +
-        "0.9981, 0.9984, 0.9986, 0.9989, 0.9991, 0.9994, 0.9995, 0.9997, 0.9998, " +
-        "0.9999, 1, 1.0001, 1.0001, 1.0001, 1.0002, 1)";
-      // A more damped spring (~2.7% overshoot) — half the bounce; used for
-      // counter mode's gentler settle.
-      const SLOT_EASING_SOFT =
-        "linear(0, 0.0253, 0.0896, 0.1778, 0.2787, 0.3835, 0.486, 0.582, 0.6689, " +
-        "0.7454, 0.8108, 0.8655, 0.9101, 0.9454, 0.9727, 0.993, 1.0075, 1.0173, " +
-        "1.0232, 1.0263, 1.0272, 1.0265, 1.0247, 1.0223, 1.0196, 1.0167, 1.014, " +
-        "1.0114, 1.009, 1.0069, 1.0051, 1.0037, 1.0024, 1.0015, 1.0007, 1.0002, " +
-        "0.9998, 0.9995, 0.9994, 0.9993, 0.9993, 0.9993, 0.9993, 0.9994, 0.9995, " +
-        "0.9995, 0.9996, 0.9997, 0.9998, 0.9998, 0.9999, 0.9999, 0.9999, 1, 1, 1, " +
-        "1, 1, 1, 1, 1)";
-
-      // Engines without CSS linear() (Firefox <112, Safari <17.2, Chrome <113)
-      // throw on it in Element.animate(); fall back to a no-overshoot bezier.
+      /**
+       * Underdamped spring (ζ≈0.68): ~5% overshoot, then a smooth settle. Sampled at
+       * 60 steps with a frequency (ω_d≈3π) high enough that the oscillation fully
+       * decays *within* the duration — so the curve lands on 1 cleanly instead of
+       * snapping the last few pixels into place. See docs/SlotNumber.md for the generator.
+       */
+      const SLOT_EASING = "linear(0, 0.0208, 0.0752, 0.1525, 0.2439, 0.3422, 0.4417, 0.5382, 0.6286, " +
+          "0.711, 0.7839, 0.847, 0.9002, 0.944, 0.9789, 1.0058, 1.0257, 1.0395, " +
+          "1.0483, 1.0529, 1.0543, 1.0532, 1.0502, 1.046, 1.041, 1.0357, 1.0303, " +
+          "1.0251, 1.0202, 1.0157, 1.0117, 1.0083, 1.0054, 1.003, 1.0011, 0.9997, " +
+          "0.9986, 0.9979, 0.9974, 0.9971, 0.9971, 0.9971, 0.9973, 0.9975, 0.9978, " +
+          "0.9981, 0.9984, 0.9986, 0.9989, 0.9991, 0.9994, 0.9995, 0.9997, 0.9998, " +
+          "0.9999, 1, 1.0001, 1.0001, 1.0001, 1.0002, 1)";
+      /**
+       * A more damped spring (ζ≈0.754) with ~2.7% overshoot — half the bounce of
+       * {@link SLOT_EASING}. Used for `SlotNumber`'s `counter` mode, where the rapid,
+       * gear-like spin reads better with a gentler settle.
+       */
+      const SLOT_EASING_SOFT = "linear(0, 0.0253, 0.0896, 0.1778, 0.2787, 0.3835, 0.486, 0.582, 0.6689, " +
+          "0.7454, 0.8108, 0.8655, 0.9101, 0.9454, 0.9727, 0.993, 1.0075, 1.0173, " +
+          "1.0232, 1.0263, 1.0272, 1.0265, 1.0247, 1.0223, 1.0196, 1.0167, 1.014, " +
+          "1.0114, 1.009, 1.0069, 1.0051, 1.0037, 1.0024, 1.0015, 1.0007, 1.0002, " +
+          "0.9998, 0.9995, 0.9994, 0.9993, 0.9993, 0.9993, 0.9993, 0.9994, 0.9995, " +
+          "0.9995, 0.9996, 0.9997, 0.9998, 0.9998, 0.9999, 0.9999, 0.9999, 1, 1, 1, " +
+          "1, 1, 1, 1, 1)";
+      /**
+       * Cubic-bezier fallback for engines without CSS `linear()` easing (Firefox
+       * <112, Safari <17.2, Chrome <113), where `Element.animate()` throws on a
+       * `linear()` string. A clean decelerate with no overshoot, so it also stays
+       * within the strip's overshoot headroom (never reveals blank past the landing
+       * row); old engines simply lose the spring bounce.
+       */
       const FALLBACK_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
-      const supportsLinearEasing = () =>
-        typeof CSS !== "undefined" &&
-        typeof CSS.supports === "function" &&
-        CSS.supports("transition-timing-function", "linear(0, 1)");
-      const safeEasing = (easing, ok = supportsLinearEasing()) =>
-        !ok && easing.startsWith("linear(") ? FALLBACK_EASING : easing;
-
-      function charsetOf(ch) {
-        if (ch >= "0" && ch <= "9") return DIGITS;
-        if (ch >= "A" && ch <= "Z") return UPPER;
-        if (ch >= "a" && ch <= "z") return LOWER;
-        return null;
+      /** True when the engine can parse CSS `linear()` easing functions. */
+      function supportsLinearEasing() {
+          return (typeof CSS !== "undefined" &&
+              typeof CSS.supports === "function" &&
+              CSS.supports("transition-timing-function", "linear(0, 1)"));
       }
-      function sharedCharset(from, to) {
-        const cs = charsetOf(from);
-        return cs && cs === charsetOf(to) ? cs : null;
+      /**
+       * Swap a `linear()` easing for {@link FALLBACK_EASING} on engines that cannot
+       * parse it — otherwise `Element.animate()` throws and no reel renders. Any
+       * non-`linear()` easing (including a caller's own) passes through unchanged.
+       */
+      function safeEasing(easing, supportsLinear = supportsLinearEasing()) {
+          return !supportsLinear && easing.startsWith("linear(")
+              ? FALLBACK_EASING
+              : easing;
       }
-      // `cycles` prepends extra full revolutions (faster spin, same duration).
-      function forwardPath(cs, from, to, cycles = 0) {
-        const len = cs.length, fi = cs.indexOf(from), ti = cs.indexOf(to);
-        const steps = ((ti - fi + len) % len || len) + cycles * len;
-        const rows = [];
-        for (let k = 0; k <= steps; k++) rows.push(cs[(fi + k) % len]);
-        return rows;
-      }
-      function backwardPath(cs, from, to, cycles = 0) {
-        const len = cs.length, fi = cs.indexOf(from), ti = cs.indexOf(to);
-        const steps = ((fi - ti + len) % len || len) + cycles * len;
-        const rows = [];
-        for (let k = 0; k <= steps; k++)
-          rows.push(cs[(((fi - k) % len) + len) % len]);
-        return rows;
-      }
-      function buildRoll(from, to, direction, coin, fill = [], cycles = 0) {
-        const rollUp = direction === "both" ? coin < 0.5 : direction === "up";
-        const cs = sharedCharset(from, to);
-        const path = cs
-          ? rollUp
-            ? forwardPath(cs, from, to, cycles)
-            : backwardPath(cs, from, to, cycles)
-          : [from, ...fill, to];
-        if (rollUp) return { rows: path, startRow: 0, endRow: path.length - 1 };
-        const rows = path.slice().reverse();
-        return { rows, startRow: rows.length - 1, endRow: 0 };
-      }
-      const rollDuration = (coin = Math.random()) => 750 + coin * 300;
-      // Fraction of a roll's travel the spring easings overshoot their landing
-      // row (SLOT_EASING peaks ~1.054); the strip is padded past the landing
-      // glyph by this much so the overshoot never reveals empty space.
+      /**
+       * Fraction of a roll's travel the spring easings overshoot their landing row
+       * ({@link SLOT_EASING} peaks at ~1.054, i.e. 5.4%). The strip is padded past the
+       * landing glyph by this much so the overshoot reveals the reel's continuation
+       * instead of empty space. See `SlotText`'s strip builder.
+       */
       const OVERSHOOT_HEADROOM = 0.06;
-      // Gear-reduction odometer: each digit advances from the previous value by
-      // however many of its own place-steps the value crossed — low places blur,
-      // high places barely move. Revolutions capped so fast scrubs stay sane.
-      const COUNTER_CYCLE_CAP = 6;
-      function odometerDigit(prev, cur, place, cap = COUNTER_CYCLE_CAP) {
-        const p = 10 ** place;
-        const pv = Math.floor(prev / p);
-        const steps = Math.floor(cur / p) - pv;
-        return {
-          from: String((((pv % 10) + 10) % 10)),
-          cycles: Math.min(cap, Math.floor(Math.abs(steps) / 10)),
-        };
+      /** Base roll duration (ms) before per-reel jitter. */
+      const BASE_DURATION = 750;
+      /** Maximum extra duration (ms) added per reel so columns settle asynchronously. */
+      const DURATION_JITTER = 300;
+      /** The ordered charset a character belongs to, or `null` if it has none. */
+      function charsetOf(ch) {
+          if (ch >= "0" && ch <= "9")
+              return DIGITS;
+          if (ch >= "A" && ch <= "Z")
+              return UPPER;
+          if (ch >= "a" && ch <= "z")
+              return LOWER;
+          return null;
       }
-      function hashSeed(str) {
-        let h = 2166136261;
-        for (let i = 0; i < str.length; i++) {
-          h ^= str.charCodeAt(i);
-          h = Math.imul(h, 16777619);
-        }
-        return h >>> 0;
+      /** The shared ordered charset of `from` and `to`, or `null` if they differ. */
+      function sharedCharset(from, to) {
+          const cs = charsetOf(from);
+          return cs && cs === charsetOf(to) ? cs : null;
       }
-      function makeRng(seed) {
-        let s = seed >>> 0;
-        return () => {
-          s = (s + 0x6d2b79f5) | 0;
-          let t = Math.imul(s ^ (s >>> 15), 1 | s);
-          t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-        };
+      /**
+       * Inclusive path through `charset` from `from` to `to` stepping forward (+1,
+       * wrapping). `cycles` prepends that many extra full revolutions, so the reel
+       * travels further in the same duration — i.e. spins faster (see `counterCycles`).
+       */
+      function forwardPath(charset, from, to, cycles = 0) {
+          const len = charset.length;
+          const fi = charset.indexOf(from);
+          const ti = charset.indexOf(to);
+          const steps = ((ti - fi + len) % len || len) + cycles * len;
+          const rows = [];
+          for (let k = 0; k <= steps; k++)
+              rows.push(charset[(fi + k) % len]);
+          return rows;
       }
-      const STEADY_COIN = 0.5;
-      const prefersReducedMotion = () =>
-        window.matchMedia &&
-        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-      const SPIN_LENGTH = 6;
-      const DEFAULT_SPIN_POOL =
-        "的一是不了人我在有他這為之大來以個中上們到說國和地也子時道出而要於就下得可你年生自會那後能對著事其裡所去行過家十用發天如然作方成者多日都三小軍二無同麼經法當起與好看學進種將還分此心前面又定見只主沒公從金東風花雨山水火土木月日星雲海";
-      function isIdeograph(ch) {
-        const cp = ch.codePointAt(0) || 0;
-        return (
-          (cp >= 0x3400 && cp <= 0x9fff) ||
-          (cp >= 0xf900 && cp <= 0xfaff) ||
-          (cp >= 0x20000 && cp <= 0x2fa1f)
-        );
+      /** Inclusive path through `charset` from `from` to `to` stepping backward (-1, wrapping). */
+      function backwardPath(charset, from, to, cycles = 0) {
+          const len = charset.length;
+          const fi = charset.indexOf(from);
+          const ti = charset.indexOf(to);
+          const steps = ((fi - ti + len) % len || len) + cycles * len;
+          const rows = [];
+          for (let k = 0; k <= steps; k++)
+              rows.push(charset[(((fi - k) % len) + len) % len]);
+          return rows;
       }
-      const isEmoji = (ch) => /\p{Extended_Pictographic}/u.test(ch);
-      // A reel only rolls between graphemes of the same kind, and never for the
-      // non-rolling kinds emoji/symbol — so currency symbols, separators, and
-      // emoji always swap statically while letters and ideographs roll/flip.
-      function glyphKind(ch) {
-        if (isEmoji(ch)) return "emoji";
-        const cs = charsetOf(ch);
-        if (cs) return cs;
-        if (isIdeograph(ch)) return "ideograph";
-        return /\p{Letter}/u.test(ch) ? "letter" : "symbol";
+      /**
+       * Build the minimal rolling strip for a `from → to` transition.
+       *
+       * Ordered charsets travel their charset in order (wrapping). Any other pair is
+       * a flip from `from` to `to`, optionally spun through `fill` glyphs in between
+       * (used for ideographs — see {@link sampleSpin}).
+       *
+       * @param coin Random value in [0, 1) used only when `direction === "both"`.
+       * @param fill Intermediate glyphs inserted between `from` and `to` for
+       *   non-ordered pairs (ignored for ordered charsets).
+       * @param cycles Extra full revolutions for ordered charsets (faster spin in the
+       *   same duration); ignored for non-ordered pairs. See {@link counterCycles}.
+       */
+      function buildRoll(from, to, direction, coin, fill = [], cycles = 0) {
+          const rollUp = direction === "both" ? coin < 0.5 : direction === "up";
+          const cs = sharedCharset(from, to);
+          const path = cs
+              ? rollUp
+                  ? forwardPath(cs, from, to, cycles)
+                  : backwardPath(cs, from, to, cycles)
+              : [from, ...fill, to];
+          if (rollUp)
+              return { rows: path, startRow: 0, endRow: path.length - 1 };
+          const rows = path.slice().reverse();
+          return { rows, startRow: rows.length - 1, endRow: 0 };
       }
-      const STATIC_KINDS = new Set(["emoji", "symbol"]);
-      function sampleSpin(pool, n, rand = Math.random) {
-        const chars = Array.from(pool);
-        const out = [];
-        for (let i = 0; i < n; i++)
-          out.push(chars[Math.floor(rand() * chars.length)]);
-        return out;
-      }
-      function randomGlyph(pool, exclude = "", rand = Math.random) {
-        const choices = pool.filter((g) => g !== exclude);
-        const from = choices.length ? choices : pool;
-        return from[Math.floor(rand() * from.length)] ?? "";
-      }
-      // Decide how `target` animates from the aligned previous grapheme
-      // `source`: same-kind sources roll from their real value, otherwise a
-      // same-kind start glyph is synthesized so every changed grapheme spins.
-      // Emoji, symbols, and unchanged graphemes return null (shown statically).
-      function chooseReel(target, source, letterPool, spinPool, rand = Math.random) {
-        const kind = glyphKind(target);
-        if (STATIC_KINDS.has(kind)) return null;
-        const cs = charsetOf(target);
-        const usable =
-          source && !isEmoji(source) && glyphKind(source) === kind;
-        const from = usable
-          ? source
-          : randomGlyph(
-              cs
-                ? Array.from(cs)
-                : isIdeograph(target)
-                  ? Array.from(spinPool)
-                  : letterPool,
-              target,
-              rand,
-            );
-        if (!from || from === target) return null;
-        const fill = cs
-          ? []
-          : isIdeograph(target)
-            ? sampleSpin(spinPool, SPIN_LENGTH, rand)
-            : sampleSpin(letterPool.join(""), SPIN_LENGTH, rand);
-        return { from, fill };
-      }
-
-      // One reused grapheme segmenter (constructing one per call is costly).
-      const SEGMENTER =
-        typeof Intl !== "undefined" && "Segmenter" in Intl
-          ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
-          : null;
-
-      function segmentWithOffsets(text) {
-        const out = [];
-        // Fast path: all-ASCII text (numbers, plain Latin) has no grapheme
-        // clusters, so a one-code-unit-per-char split matches the segmenter
-        // without its cost — worth skipping for a scrubbing counter's rebuilds.
-        if (SEGMENTER && /[\u0080-\uFFFF]/.test(text)) {
-          for (const s of SEGMENTER.segment(text))
-            out.push({ g: s.segment, start: s.index });
-          return out;
-        }
-        let i = 0;
-        for (const ch of text) {
-          out.push({ g: ch, start: i });
-          i += ch.length;
-        }
-        return out;
-      }
-
-      // Resting text is one kerned run; on change, overlay measured reels at each
-      // grapheme's real (kerned) box so spacing/kerning/RTL match normal text.
-      function resolveBackground(el) {
-        let node = el;
-        while (node) {
-          const bg = getComputedStyle(node).backgroundColor;
-          if (bg && bg !== "transparent" && !bg.startsWith("rgba(0, 0, 0, 0"))
-            return bg;
-          node = node.parentElement;
-        }
-        return getComputedStyle(document.body).backgroundColor || "#fff";
-      }
-
-      function SlotText({
-        text,
-        direction = "both",
-        dir = "auto",
-        spinPool = DEFAULT_SPIN_POOL,
-        randomSpin = false,
-        digitCycles,
-        digitFrom,
-        easing = SLOT_EASING,
-        style,
-      }) {
-        const label = String(text);
-        const hostRef = useRef(null);
-        const textRef = useRef(null);
-        const layerRef = useRef(null);
-        const cellsRef = useRef([]);
-
-        useLayoutEffect(() => {
-          const host = hostRef.current;
-          const textEl = textRef.current;
-          const layer = layerRef.current;
-          if (!host || !textEl || !layer) return;
-
-          // Wipe the previous value's reels before spinning this one in.
-          const wipe = () => {
-            for (const c of cellsRef.current) {
-              for (const a of c.getAnimations({ subtree: true })) a.cancel();
-              c.remove();
-            }
-            cellsRef.current = [];
-          };
-
-          // Measure + build the reels. Re-runnable so we rebuild once the web
-          // fonts load — boxes first measured against a fallback font would
-          // otherwise leave the cells (and the cents group) mispositioned.
-          const build = () => {
-          wipe();
-
-          const node = textEl.firstChild;
-          if (!node || prefersReducedMotion()) {
-            textEl.style.visibility = "visible";
-            return;
+      /**
+       * Pad a roll's `rows` just past the landing row, in the travel direction, with
+       * the landing glyph — so the spring easing's overshoot slides through that same
+       * glyph instead of revealing empty space beyond the strip (a seamless bounce).
+       * The guard count scales with the roll's travel (see {@link OVERSHOOT_HEADROOM}).
+       * An up-roll (`endRow >= startRow`) appends the guard rows; a down-roll prepends
+       * them and shifts both indices so the rest position is unchanged. Mutates and
+       * returns `rows`.
+       */
+      function padOvershoot(rows, startRow, endRow, headroom = OVERSHOOT_HEADROOM) {
+          const target = rows[endRow];
+          const guard = Math.ceil(Math.abs(endRow - startRow) * headroom);
+          let landRow = endRow;
+          let firstRow = startRow;
+          if (endRow >= startRow) {
+              for (let k = 0; k < guard; k++)
+                  rows.push(target);
           }
-
-          // Off → a per-value seed makes the roll identical every play; on →
-          // truly random. Drives start glyph, spin glyphs, and direction.
-          const rand = randomSpin ? Math.random : makeRng(hashSeed(label));
-
-          const toG = segmentWithOffsets(label);
-          const hostRect = host.getBoundingClientRect();
-          const bg = resolveBackground(host);
-          // Lift each reel cell by the row's half-leading so it sits exactly on
-          // the measured glyph box.
-          const lead =
-            ((ROW_H - 1) / 2) * parseFloat(getComputedStyle(host).fontSize);
-
-          // Other-script letters spin through this value's own same-kind glyphs.
-          const letterPool = [
-            ...new Set(
-              toG.map((x) => x.g).filter((g) => glyphKind(g) === "letter"),
-            ),
-          ];
-
-          // Measure every grapheme's kerned box first (reads), then build all
-          // cells (writes), to avoid a forced reflow per glyph.
-          const plans = [];
-          let digitIdx = 0;
-          for (const { g, start } of toG) {
-            const isDigit = charsetOf(g) === DIGITS;
-            let cycles = 0, reel;
-            if (isDigit) {
-              const i = digitIdx++;
-              cycles = digitCycles?.[i] ?? 0;
-              if (digitFrom) {
-                // Odometer mode: roll from the supplied previous digit; an
-                // unchanged digit with no extra revolutions holds still.
-                const from = digitFrom[i] ?? g;
-                reel = from === g && cycles === 0 ? null : { from, fill: [] };
-              } else {
-                reel = chooseReel(g, null, letterPool, spinPool, rand);
-              }
-            } else {
-              reel = chooseReel(g, null, letterPool, spinPool, rand);
-            }
-            if (!reel && g.trim() === "") continue; // whitespace: nothing to show
-            const range = document.createRange();
-            range.setStart(node, start);
-            range.setEnd(node, start + g.length);
-            plans.push({ g, reel, rect: range.getBoundingClientRect(), cycles });
-          }
-
-          // Hide the measured text; the cells are now the resting glyphs.
-          textEl.style.visibility = "hidden";
-
-          const cells = [];
-          // Each rolling reel is one multi-line text node (O(1) DOM nodes per
-          // reel, ~30× cheaper to build than a span per row — which matters for
-          // the long strips counter mode spins through). Rows are spaced by the
-          // font's real line box, which can exceed line-height (notably Safari/
-          // CoreText with tall serifs), so the strip is stepped by the *measured*
-          // row advance rather than an assumed ROW_H — the landing row then lines
-          // up in every engine. Build every strip first, then measure (one
-          // batched layout read), then position + animate, to avoid layout thrash.
-          const reels = [];
-          for (const { g, reel, rect, cycles } of plans) {
-            const cell = document.createElement("span");
-            cell.setAttribute("aria-hidden", "true");
-            const left = rect.left - hostRect.left;
-            const top = rect.top - hostRect.top;
-
-            if (!reel) {
-              // A symbol (currency, separator, punctuation): render statically.
-              cell.style.cssText =
-                "position:absolute;left:" +
-                left +
-                "px;top:" +
-                top +
-                "px;line-height:1;white-space:pre";
-              cell.textContent = g;
-              layer.appendChild(cell);
-              cells.push(cell);
-              continue;
-            }
-
-            // `contain:strict` lets the engine clip the (often very tall) strip
-            // to this fixed-size window and skip rasterizing its off-screen rows.
-            cell.style.cssText =
-              "position:absolute;left:" +
-              left +
-              "px;top:" +
-              (top - lead) +
-              "px;width:" +
-              rect.width +
-              "px;height:" +
-              ROW_H +
-              "em;overflow:hidden;contain:strict;background:" +
-              bg;
-
-            const { rows, startRow, endRow } = buildRoll(
-              reel.from,
-              g,
-              direction,
-              rand(),
-              reel.fill,
-              cycles,
-            );
-            // The spring easing overshoots its landing row by a fraction of the
-            // roll's travel, so pad the strip past `endRow` (in the travel
-            // direction) with the landing glyph: the overshoot slides through
-            // that same glyph (a seamless soft bounce) instead of empty space.
-            const target = rows[endRow];
-            const guard = Math.ceil(
-              Math.abs(endRow - startRow) * OVERSHOOT_HEADROOM,
-            );
-            let landRow = endRow, firstRow = startRow;
-            if (endRow >= startRow) {
-              for (let k = 0; k < guard; k++) rows.push(target);
-            } else {
-              for (let k = 0; k < guard; k++) rows.unshift(target);
+          else {
+              for (let k = 0; k < guard; k++)
+                  rows.unshift(target);
               landRow += guard;
               firstRow += guard;
-            }
-            const strip = document.createElement("span");
-            strip.style.cssText =
-              "position:absolute;left:0;top:0;width:100%;white-space:pre;line-height:" +
-              ROW_H +
-              ";will-change:transform";
-            strip.textContent = rows.join("\n");
-            cell.appendChild(strip);
-            layer.appendChild(cell);
-            cells.push(cell);
-            // randomSpin staggers each settle; otherwise all settle as one.
-            reels.push({
-              strip,
-              rowCount: rows.length,
-              landRow,
-              firstRow,
-              duration: rollDuration(randomSpin ? Math.random() : STEADY_COIN),
-            });
           }
-
-          // Reads (one batched layout): the rendered row advance per strip —
-          // total height over row count, so it reflects the real line box.
-          const advances = reels.map(
-            (r) => r.strip.getBoundingClientRect().height / r.rowCount,
-          );
-          // Writes: land on the final glyph and stay (the reel is the rest
-          // state), then play the roll. Keep the strip promoted (will-change
-          // stays) so finishing never triggers a de-promotion flicker.
-          // safeEasing falls back from linear() where the engine can't parse it.
-          const settle = safeEasing(easing);
-          reels.forEach((r, i) => {
-            const adv = advances[i];
-            const at = (row) => `translateY(${-(row * adv)}px)`;
-            r.strip.style.transform = at(r.landRow);
-            r.strip.animate(
-              [{ transform: at(r.firstRow) }, { transform: at(r.landRow) }],
-              { duration: r.duration, easing: settle },
-            );
-          });
-
-          cellsRef.current = cells;
-          };
-
-          build();
-
-          // Rebuild once fonts are ready (no-op if already loaded), then clean up.
-          let active = true;
-          const fonts = typeof document !== "undefined" ? document.fonts : null;
-          if (fonts && fonts.status !== "loaded")
-            fonts.ready.then(() => { if (active) build(); });
-
-          return () => { active = false; wipe(); };
-        }, [label, direction, spinPool, randomSpin, digitCycles, digitFrom, easing]);
-
-        return (
-          <span
-            ref={hostRef}
-            role="img"
-            aria-label={label}
-            dir={dir}
-            style={{
-              position: "relative",
-              display: "inline-block",
-              whiteSpace: "pre",
-              lineHeight: ROW_H,
-              fontKerning: "normal",
-              textRendering: "optimizeLegibility",
-              ...style,
-            }}
-          >
-            <span ref={textRef}>{label}</span>
-            <span
-              ref={layerRef}
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                left: 0,
-                top: 0,
-                pointerEvents: "none",
-              }}
-            />
-          </span>
-        );
+          return { rows, firstRow, landRow };
       }
-
-      function SlotLetter({
-        char,
-        direction = "both",
-        spinPool,
-        randomSpin = false,
-        style,
-      }) {
-        const ch = Array.from(String(char))[0] ?? "";
-        return (
-          <SlotText
-            text={ch}
-            direction={direction}
-            spinPool={spinPool}
-            randomSpin={randomSpin}
-            style={style}
-          />
-        );
+      /** Number of random glyphs an ideograph spins through before settling. */
+      const SPIN_LENGTH = 6;
+      /**
+       * Common Traditional Chinese characters used as the default spinner pool for
+       * ideographs — random members are rolled through to simulate a reel.
+       */
+      const DEFAULT_SPIN_POOL = "的一是不了人我在有他這為之大來以個中上們到說國和地也子時道出而要於就下得可你年生自會那後能對著事其裡所去行過家十用發天如然作方成者多日都三小軍二無同麼經法當起與好看學進種將還分此心前面又定見只主沒公從金東風花雨山水火土木月日星雲海";
+      /** True when `ch`'s first code point is a CJK ideograph. */
+      function isIdeograph(ch) {
+          const cp = ch.codePointAt(0) ?? 0;
+          return ((cp >= 0x3400 && cp <= 0x9fff) ||
+              (cp >= 0xf900 && cp <= 0xfaff) ||
+              (cp >= 0x20000 && cp <= 0x2fa1f));
       }
-
-      function SlotNumber({
-        value,
-        format,
-        locales = "en-US",
-        suffix = "",
-        direction = "both",
-        randomSpin = false,
-        cents = false,
-        counter = false,
-        style,
-      }) {
-        // Track the previous value so counter mode can roll from it (updated
-        // after commit, not during render).
-        const prevRef = useRef(typeof value === "number" ? value : 0);
-        useEffect(() => {
-          if (typeof value === "number") prevRef.current = value;
-        });
-
-        // Memoized so the odometer arrays keep a stable identity across
-        // unrelated re-renders (only changing when the value does), so an
-        // in-progress roll isn't wiped by, e.g., the auto-cycling card above.
-        const plan = useMemo(() => {
-          if (typeof value !== "number" && typeof value !== "bigint") return null;
-          const opts = cents
-            ? { ...format, minimumFractionDigits: 2, maximumFractionDigits: 2 }
-            : format || {};
-          const parts = new Intl.NumberFormat(locales, opts).formatToParts(value);
-          let head = "", frac = "", intDigits = 0;
-          for (const p of parts) {
-            if (p.type === "fraction") frac += p.value;
-            else head += p.value;
-            if (p.type === "integer") intDigits += p.value.length;
-          }
-          const fracDigits = frac.length;
-          const headFrom = [], headCycles = [], fracFrom = [], fracCycles = [];
-          let odometerDir = direction;
-          const odometer =
-            counter && typeof value === "number" && Number.isFinite(value);
-          if (odometer) {
-            const scale = 10 ** fracDigits;
-            const cur = Math.round(value * scale);
-            const prev = Math.round(prevRef.current * scale);
-            odometerDir = cur >= prev ? "up" : "down";
-            let i = 0;
-            for (const p of parts) {
-              if (p.type === "integer")
-                for (const _ of p.value) {
-                  const d = odometerDigit(prev, cur, intDigits - 1 - i++ + fracDigits);
-                  headFrom.push(d.from);
-                  headCycles.push(d.cycles);
-                }
-              else if (p.type === "fraction")
-                for (let k = 0; k < p.value.length; k++) {
-                  const d = odometerDigit(prev, cur, fracDigits - 1 - k);
-                  fracFrom.push(d.from);
-                  fracCycles.push(d.cycles);
-                }
-            }
-          }
+      /** True when `ch` is an emoji / pictographic glyph (which never rolls). */
+      function isEmoji(ch) {
+          return /\p{Extended_Pictographic}/u.test(ch);
+      }
+      /**
+       * Coarse class of a grapheme. Digits and same-case Latin letters roll their
+       * charset; ideographs and other-script letters spin/flip; `symbol` (currency,
+       * separators, spaces, punctuation) and `emoji` never animate.
+       */
+      function glyphKind(ch) {
+          if (isEmoji(ch))
+              return "emoji";
+          const cs = charsetOf(ch);
+          if (cs)
+              return cs;
+          if (isIdeograph(ch))
+              return "ideograph";
+          return /\p{Letter}/u.test(ch) ? "letter" : "symbol";
+      }
+      /** Kinds whose graphemes never animate (they swap in place). */
+      const STATIC_KINDS = new Set(["emoji", "symbol"]);
+      /** Pick `n` random glyphs from `pool` (for the ideograph spinner). */
+      function sampleSpin(pool, n, rand = Math.random) {
+          const out = [];
+          const chars = Array.from(pool);
+          for (let i = 0; i < n; i++)
+              out.push(chars[Math.floor(rand() * chars.length)]);
+          return out;
+      }
+      /** Pick a random glyph from `pool`, avoiding `exclude` when possible. */
+      function randomGlyph(pool, exclude = "", rand = Math.random) {
+          const choices = pool.filter((g) => g !== exclude);
+          const from = choices.length ? choices : pool;
+          return from[Math.floor(rand() * from.length)] ?? "";
+      }
+      /**
+       * Decide how `target` should animate given the previous grapheme aligned to its
+       * position (`source`, or `null` when none lines up).
+       *
+       * - Emoji and symbols never animate → returns `null`.
+       * - A same-kind, unchanged source → `null` (the real text already shows it).
+       * - A same-kind, changed source → rolls from that real value.
+       * - Otherwise a same-kind start glyph is synthesized (digits/letters from their
+       *   charset, ideographs from `spinPool`, other scripts from `letterPool`) so the
+       *   grapheme still spins regardless of how the two strings line up.
+       *
+       * @param letterPool Same-kind glyphs (other scripts) drawn from the live text.
+       */
+      function chooseReel(target, source, letterPool, spinPool, rand = Math.random) {
+          const kind = glyphKind(target);
+          if (STATIC_KINDS.has(kind))
+              return null;
+          const cs = charsetOf(target);
+          const usable = source && !isEmoji(source) && glyphKind(source) === kind;
+          const from = usable
+              ? source
+              : randomGlyph(cs
+                  ? Array.from(cs)
+                  : isIdeograph(target)
+                      ? Array.from(spinPool)
+                      : letterPool, target, rand);
+          if (!from || from === target)
+              return null;
+          const fill = cs
+              ? []
+              : isIdeograph(target)
+                  ? sampleSpin(spinPool, SPIN_LENGTH, rand)
+                  : sampleSpin(letterPool.join(""), SPIN_LENGTH, rand);
+          return { from, fill };
+      }
+      /** Per-reel roll duration (ms) with jitter applied. */
+      function rollDuration(coin = Math.random()) {
+          return BASE_DURATION + coin * DURATION_JITTER;
+      }
+      /** Most extra revolutions a single counter digit may roll (caps fast spins). */
+      const COUNTER_CYCLE_CAP = 6;
+      /**
+       * Resolve one digit of a gear-reduction odometer for a `prev → cur` change,
+       * both given in the smallest unit (e.g. integer cents). `place` is the power of
+       * ten this digit occupies (`0` = units, `1` = tens, …). A digit advances by the
+       * number of its own place-steps the value crossed, so low places spin many
+       * revolutions (a blur) while high places barely move — exactly like the wheels
+       * of an odometer. Revolutions are capped by {@link COUNTER_CYCLE_CAP}.
+       */
+      function odometerDigit(prev, cur, place, cap = COUNTER_CYCLE_CAP) {
+          const p = 10 ** place;
+          const pv = Math.floor(prev / p);
+          const steps = Math.floor(cur / p) - pv;
           return {
-            head, frac, headFrom, headCycles, fracFrom, fracCycles,
-            allFrom: [...headFrom, ...fracFrom],
-            allCycles: [...headCycles, ...fracCycles],
-            odometerDir, odometer,
+              from: String(((pv % 10) + 10) % 10),
+              cycles: Math.min(cap, Math.floor(Math.abs(steps) / 10)),
           };
-        }, [value, format, locales, cents, counter, direction]);
-
-        // A preformatted string passes through verbatim — no part-aware features.
-        if (plan === null) {
-          return (
-            <SlotText
-              text={String(value) + suffix}
-              direction={direction}
-              randomSpin={randomSpin}
-              style={style}
-            />
-          );
-        }
-
-        const { head, frac, odometer, odometerDir } = plan;
-        // Counter mode spins low digits fast; its gentler settle reads better.
-        const easing = counter ? SLOT_EASING_SOFT : undefined;
-
-        // Without the cents treatment the whole number is a single reel.
-        if (!cents || !frac) {
-          return (
-            <SlotText
-              text={head + frac + suffix}
-              direction={odometerDir}
-              randomSpin={randomSpin}
-              digitCycles={odometer ? plan.allCycles : undefined}
-              digitFrom={odometer ? plan.allFrom : undefined}
-              easing={easing}
-              style={style}
-            />
-          );
-        }
-
-        // Cents: a smaller fractional reel baseline-aligned beside the integer
-        // part; one labelled container so it reads as a single number.
-        return (
-          <span
-            role="img"
-            aria-label={head + frac + suffix}
-            style={{ display: "inline-block", ...style }}
-          >
-            <SlotText
-              text={head}
-              direction={odometerDir}
-              randomSpin={randomSpin}
-              digitCycles={odometer ? plan.headCycles : undefined}
-              digitFrom={odometer ? plan.headFrom : undefined}
-              easing={easing}
-            />
-            <SlotText
-              text={frac}
-              direction={odometerDir}
-              randomSpin={randomSpin}
-              digitCycles={odometer ? plan.fracCycles : undefined}
-              digitFrom={odometer ? plan.fracFrom : undefined}
-              easing={easing}
-              style={{ fontSize: "0.9em" }}
-            />
-            {suffix ? <span>{suffix}</span> : null}
-          </span>
-        );
       }
+      /** FNV-1a hash of a string → 32-bit seed (for deterministic spins). */
+      function hashSeed(str) {
+          let h = 2166136261;
+          for (let i = 0; i < str.length; i++) {
+              h ^= str.charCodeAt(i);
+              h = Math.imul(h, 16777619);
+          }
+          return h >>> 0;
+      }
+      /**
+       * Seeded PRNG (mulberry32) returning values in [0, 1). The same seed yields the
+       * same sequence, so a value can be made to spin identically every time.
+       */
+      function makeRng(seed) {
+          let s = seed >>> 0;
+          return () => {
+              s = (s + 0x6d2b79f5) | 0;
+              let t = Math.imul(s ^ (s >>> 15), 1 | s);
+              t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+              return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+          };
+      }
+      /** True when the user has requested reduced motion. */
+      function prefersReducedMotion() {
+          return (typeof window !== "undefined" &&
+              !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
+      }
+      // One grapheme segmenter for the whole module — constructing one per call is
+      // surprisingly costly, and it is stateless, so it is safe to reuse.
+      const SEGMENTER = typeof Intl !== "undefined" && "Segmenter" in Intl
+          ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
+          : null;
+      /**
+       * Split `text` into grapheme clusters with their UTF-16 offsets (for Range
+       * probing). All-ASCII text (numbers, plain Latin) has no grapheme clusters, so
+       * it takes a one-code-unit-per-char fast path that matches the segmenter without
+       * its per-call cost — worth skipping for a scrubbing counter's per-frame
+       * rebuilds. Non-ASCII (CJK, emoji, combining marks) uses the segmenter when
+       * available, else the same per-code-point split.
+       */
+      function segmentWithOffsets(text) {
+          const out = [];
+          if (SEGMENTER && /[\u0080-\uFFFF]/.test(text)) {
+              for (const s of SEGMENTER.segment(text))
+                  out.push({ g: s.segment, start: s.index });
+              return out;
+          }
+          let i = 0;
+          for (const ch of text) {
+              out.push({ g: ch, start: i });
+              i += ch.length;
+          }
+          return out;
+      }
+
+      // ---- SlotText.tsx ------------------------------------------------------
+      /**
+       * sloteffect — SlotText (and the engine behind SlotLetter/SlotNumber).
+       *
+       * A hidden text run (kept for sizing, kerning and accessibility) is measured to
+       * find each grapheme's real, kerned box. Every animatable grapheme then gets an
+       * absolutely-positioned reel placed on that box; the reel spins from a random
+       * same-kind glyph and *lands on its own glyph and stays there*. Because the reel
+       * that animates is also the reel shown at rest, nothing is ever swapped out at
+       * the end — so characters never shift, in any axis, once the roll settles.
+       *
+       * Each value is a self-contained animation: the previous reels are wiped and the
+       * new text spins in from scratch (no morph from one value to the next). Digits
+       * and same-case Latin letters roll their charset, ideographs and other scripts
+       * spin through random in-script glyphs; symbols (currency, separators, spaces)
+       * and emoji never spin. Honors `prefers-reduced-motion`.
+       */
+
+      /** Steady (un-jittered) roll duration used when `randomSpin` is off. */
+      const STEADY_COIN = 0.5;
+      /** Nearest opaque background color, so a rolling reel hides the glyph beneath it. */
+      function resolveBackground(el) {
+          let node = el;
+          while (node) {
+              const bg = getComputedStyle(node).backgroundColor;
+              if (bg && bg !== "transparent" && !bg.startsWith("rgba(0, 0, 0, 0"))
+                  return bg;
+              node = node.parentElement;
+          }
+          return getComputedStyle(document.body).backgroundColor || "#fff";
+      }
+      function SlotText({ text, direction = "both", dir = "auto", spinPool = DEFAULT_SPIN_POOL, randomSpin = false, digitCycles, digitFrom, easing = SLOT_EASING, className, style, }) {
+          const label = String(text);
+          const hostRef = useRef(null);
+          const textRef = useRef(null);
+          const layerRef = useRef(null);
+          const cellsRef = useRef([]);
+          // The surface color baked onto the resting reel cells. Tracked so a theme
+          // switch (which keeps the value, so the reels aren't rebuilt) can be detected
+          // and repainted in place.
+          const bgRef = useRef("");
+          useLayoutEffect(() => {
+              const host = hostRef.current;
+              const textEl = textRef.current;
+              const layer = layerRef.current;
+              if (!host || !textEl || !layer)
+                  return;
+              // Wipe the previous value's reels before spinning this one in.
+              const wipe = () => {
+                  for (const c of cellsRef.current) {
+                      for (const a of c.getAnimations({ subtree: true }))
+                          a.cancel();
+                      c.remove();
+                  }
+                  cellsRef.current = [];
+              };
+              // Measure and build the reels. Re-runnable so we can rebuild once the web
+              // fonts finish loading — boxes first measured against a fallback font would
+              // otherwise leave the cells (and the cents group) mispositioned.
+              const build = () => {
+                  wipe();
+                  const node = textEl.firstChild;
+                  if (!node || prefersReducedMotion()) {
+                      // Show the real (kerned) text; nothing animates.
+                      textEl.style.visibility = "visible";
+                      return;
+                  }
+                  // Off → a per-value seed makes the roll identical every play; on → truly
+                  // random each play. `rand` drives the start glyph, spin glyphs, direction.
+                  const rand = randomSpin ? Math.random : makeRng(hashSeed(label));
+                  const toG = segmentWithOffsets(label);
+                  const hostRect = host.getBoundingClientRect();
+                  const bg = resolveBackground(host);
+                  bgRef.current = bg;
+                  // A grapheme's Range rect is its em box, but a reel row centers its glyph
+                  // within ROW_H (adding half-leading). Lift each cell by that half-leading so
+                  // the reel sits exactly on the measured glyph box.
+                  const lead = ((ROW_H - 1) / 2) * parseFloat(getComputedStyle(host).fontSize);
+                  // Other-script letters spin through this value's own same-kind glyphs, so a
+                  // roll uses in-script characters (e.g. CJK through CJK).
+                  const letterPool = [
+                      ...new Set(toG.map((x) => x.g).filter((g) => glyphKind(g) === "letter")),
+                  ];
+                  const plans = [];
+                  let digitIdx = 0;
+                  for (const grapheme of toG) {
+                      const isDigit = charsetOf(grapheme.g) === DIGITS;
+                      let cycles = 0;
+                      let reel;
+                      if (isDigit) {
+                          const i = digitIdx++;
+                          cycles = digitCycles?.[i] ?? 0;
+                          if (digitFrom) {
+                              // Odometer mode: roll from the supplied previous digit. An unchanged
+                              // digit with no extra revolutions simply holds still.
+                              const from = digitFrom[i] ?? grapheme.g;
+                              reel =
+                                  from === grapheme.g && cycles === 0 ? null : { from, fill: [] };
+                          }
+                          else {
+                              reel = chooseReel(grapheme.g, null, letterPool, spinPool, rand);
+                          }
+                      }
+                      else {
+                          reel = chooseReel(grapheme.g, null, letterPool, spinPool, rand);
+                      }
+                      // Whitespace has no ink and never animates — skip it entirely.
+                      if (!reel && grapheme.g.trim() === "")
+                          continue;
+                      const range = document.createRange();
+                      range.setStart(node, grapheme.start);
+                      range.setEnd(node, grapheme.start + grapheme.g.length);
+                      plans.push({
+                          g: grapheme.g,
+                          reel,
+                          rect: range.getBoundingClientRect(),
+                          cycles,
+                      });
+                  }
+                  // Hide the measured text; the cells are now the visible, resting glyphs.
+                  textEl.style.visibility = "hidden";
+                  const cells = [];
+                  const reels = [];
+                  for (const { g, reel, rect, cycles } of plans) {
+                      const cell = document.createElement("span");
+                      cell.setAttribute("aria-hidden", "true");
+                      const left = rect.left - hostRect.left;
+                      const top = rect.top - hostRect.top;
+                      if (!reel) {
+                          // A symbol (currency, separator, punctuation): render it statically.
+                          cell.style.cssText = `position:absolute;left:${left}px;top:${top}px;line-height:1;white-space:pre`;
+                          cell.textContent = g;
+                          layer.appendChild(cell);
+                          cells.push(cell);
+                          continue;
+                      }
+                      // `contain:strict` lets the engine clip the (often very tall) strip to
+                      // this fixed-size window and skip rasterizing its off-screen rows.
+                      cell.style.cssText = `position:absolute;left:${left}px;top:${top - lead}px;width:${rect.width}px;height:${ROW_H}em;overflow:hidden;contain:strict;background:${bg}`;
+                      const roll = buildRoll(reel.from, g, direction, rand(), reel.fill, cycles);
+                      // Pad the strip past its landing row with the landing glyph so the
+                      // spring easing's overshoot slides through that glyph instead of empty
+                      // space (see padOvershoot). `firstRow`/`landRow` are the start/rest rows.
+                      const { rows, firstRow, landRow } = padOvershoot(roll.rows, roll.startRow, roll.endRow);
+                      const strip = document.createElement("span");
+                      strip.style.cssText = `position:absolute;left:0;top:0;width:100%;white-space:pre;line-height:${ROW_H};will-change:transform`;
+                      strip.textContent = rows.join("\n");
+                      cell.appendChild(strip);
+                      layer.appendChild(cell);
+                      cells.push(cell);
+                      // randomSpin staggers each character's settle; otherwise all settle as one.
+                      reels.push({
+                          strip,
+                          rowCount: rows.length,
+                          landRow,
+                          firstRow,
+                          duration: rollDuration(randomSpin ? Math.random() : STEADY_COIN),
+                      });
+                  }
+                  // Reads (one batched layout): the rendered row advance per strip — total
+                  // height over row count, so it reflects the real line box, not ROW_H.
+                  const advances = reels.map((r) => r.strip.getBoundingClientRect().height / r.rowCount);
+                  // Writes: land on the final glyph and stay (the reel itself is the rest
+                  // state), then play the roll. Keep the strip promoted (will-change stays)
+                  // so finishing never triggers a de-promotion repaint — which would flicker.
+                  // safeEasing falls back from CSS linear() on engines that can't parse it.
+                  const settle = safeEasing(easing);
+                  reels.forEach((r, i) => {
+                      const adv = advances[i];
+                      const at = (row) => `translateY(${-(row * adv)}px)`;
+                      r.strip.style.transform = at(r.landRow);
+                      r.strip.animate([{ transform: at(r.firstRow) }, { transform: at(r.landRow) }], { duration: r.duration, easing: settle });
+                  });
+                  cellsRef.current = cells;
+              };
+              build();
+              // Rebuild once fonts are ready (no-op if already loaded), then clean up.
+              let active = true;
+              const fonts = typeof document !== "undefined" ? document.fonts : null;
+              if (fonts && fonts.status !== "loaded") {
+                  fonts.ready.then(() => {
+                      if (active)
+                          build();
+                  });
+              }
+              return () => {
+                  active = false;
+                  wipe();
+              };
+          }, [label, direction, spinPool, randomSpin, digitCycles, digitFrom, easing]);
+          // Keep the baked surface color in sync with the surroundings. A reel cell is
+          // painted with the nearest opaque background so it hides the glyph beneath it;
+          // because the reels are only rebuilt when the *value* changes, a theme switch
+          // (same value, new surface) would otherwise leave every cell in the previous
+          // theme's color. A theme is usually applied by flipping a class or data-attr
+          // on <html>/<body>, often from a parent effect that runs *after* this
+          // component's effects — so we can't catch it within the same render. Instead,
+          // observe those roots (and the system color-scheme) and repaint the resting
+          // cells in place when the resolved surface actually moves — no re-roll. The
+          // background-equality guard makes unrelated mutations a cheap no-op.
+          useEffect(() => {
+              const repaint = () => {
+                  const host = hostRef.current;
+                  if (!host || cellsRef.current.length === 0)
+                      return;
+                  const bg = resolveBackground(host);
+                  if (bg === bgRef.current)
+                      return;
+                  bgRef.current = bg;
+                  for (const c of cellsRef.current) {
+                      if (c.style.background)
+                          c.style.background = bg;
+                  }
+              };
+              const obs = new MutationObserver(repaint);
+              const opts = { attributes: true };
+              obs.observe(document.documentElement, opts);
+              if (document.body)
+                  obs.observe(document.body, opts);
+              const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
+              mq?.addEventListener?.("change", repaint);
+              return () => {
+                  obs.disconnect();
+                  mq?.removeEventListener?.("change", repaint);
+              };
+          }, []);
+          return (<span ref={hostRef} role="img" aria-label={label} dir={dir} className={className} style={{
+                  position: "relative",
+                  display: "inline-block",
+                  whiteSpace: "pre",
+                  lineHeight: ROW_H,
+                  fontKerning: "normal",
+                  textRendering: "optimizeLegibility",
+                  ...style,
+              }}>
+            <span ref={textRef}>{label}</span>
+            <span ref={layerRef} aria-hidden="true" style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none" }}/>
+          </span>);
+      }
+
+      // ---- SlotLetter.tsx ----------------------------------------------------
+      function SlotLetter({ char, direction = "both", spinPool, randomSpin = false, className, style, }) {
+          const ch = Array.from(String(char))[0] ?? "";
+          return (<SlotText text={ch} direction={direction} spinPool={spinPool} randomSpin={randomSpin} className={className} style={style}/>);
+      }
+
+      // ---- SlotNumber.tsx ----------------------------------------------------
+      /**
+       * sloteffect — SlotNumber.
+       *
+       * Convenience wrapper that formats a number with `Intl.NumberFormat` (any
+       * style: currency, percent, compact…) plus an optional suffix, then animates
+       * the resulting string with `SlotText`. Digits roll; separators, symbols, and
+       * the suffix stay static.
+       *
+       * Two opt-in flourishes use `Intl.NumberFormat.formatToParts` to locate each
+       * digit's place value. `cents` renders the two fractional digits smaller and
+       * baseline-aligned (price typography). `counter` rolls the digits like the
+       * wheels of a gear-reduction odometer: each digit advances from the *previous*
+       * value by however many of its own place-steps the value crossed, so the low
+       * digits blur while the ten-thousands and up barely move.
+       */
+
+      function SlotNumber({ value, format, locales = "en-US", suffix = "", direction = "both", randomSpin = false, cents = false, counter = false, className, style, }) {
+          // Track the previous value so counter mode can roll from it. Updated after
+          // commit (not during render) so it's correct under StrictMode double-renders.
+          const prevRef = useRef(typeof value === "number" ? value : 0);
+          useEffect(() => {
+              if (typeof value === "number")
+                  prevRef.current = value;
+          });
+          // Memoized so the formatted parts and odometer arrays keep a stable identity
+          // across unrelated re-renders (only changing when an input does) — which keeps
+          // an in-progress roll from being wiped and restarted.
+          const plan = useMemo(() => {
+              if (typeof value !== "number" && typeof value !== "bigint")
+                  return null;
+              const opts = cents
+                  ? { ...format, minimumFractionDigits: 2, maximumFractionDigits: 2 }
+                  : (format ?? {});
+              const parts = new Intl.NumberFormat(locales, opts).formatToParts(value);
+              // Split into the integer side (everything up to and including the decimal
+              // point) and the fractional "cents" digits.
+              let head = "";
+              let frac = "";
+              let intDigits = 0;
+              for (const p of parts) {
+                  if (p.type === "fraction")
+                      frac += p.value;
+                  else
+                      head += p.value;
+                  if (p.type === "integer")
+                      intDigits += p.value.length;
+              }
+              const fracDigits = frac.length;
+              // Per-digit odometer plan: the glyph each digit rolls from and how many
+              // extra revolutions, mapped to the digit's power-of-ten place.
+              const headFrom = [];
+              const headCycles = [];
+              const fracFrom = [];
+              const fracCycles = [];
+              let odometerDir = direction;
+              const odometer = counter && typeof value === "number" && Number.isFinite(value);
+              if (odometer) {
+                  // Work in the smallest displayed unit so place 0 is the last fraction digit.
+                  const scale = 10 ** fracDigits;
+                  const cur = Math.round(value * scale);
+                  const prev = Math.round(prevRef.current * scale);
+                  odometerDir = cur >= prev ? "up" : "down";
+                  let i = 0;
+                  for (const p of parts) {
+                      if (p.type === "integer") {
+                          for (const _ of p.value) {
+                              const d = odometerDigit(prev, cur, intDigits - 1 - i++ + fracDigits);
+                              headFrom.push(d.from);
+                              headCycles.push(d.cycles);
+                          }
+                      }
+                      else if (p.type === "fraction") {
+                          for (let k = 0; k < p.value.length; k++) {
+                              const d = odometerDigit(prev, cur, fracDigits - 1 - k);
+                              fracFrom.push(d.from);
+                              fracCycles.push(d.cycles);
+                          }
+                      }
+                  }
+              }
+              return {
+                  head,
+                  frac,
+                  headFrom,
+                  headCycles,
+                  fracFrom,
+                  fracCycles,
+                  allFrom: [...headFrom, ...fracFrom],
+                  allCycles: [...headCycles, ...fracCycles],
+                  odometerDir,
+                  odometer,
+              };
+          }, [value, format, locales, cents, counter, direction]);
+          // A preformatted string passes through verbatim — no part-aware features.
+          if (plan === null) {
+              return (<SlotText text={String(value) + suffix} direction={direction} randomSpin={randomSpin} className={className} style={style}/>);
+          }
+          const { head, frac, odometer, odometerDir } = plan;
+          // Counter mode spins low digits fast; its gentler settle reads better.
+          const easing = counter ? SLOT_EASING_SOFT : undefined;
+          // Without the cents treatment the whole number is a single reel.
+          if (!cents || !frac) {
+              return (<SlotText text={head + frac + suffix} direction={odometerDir} randomSpin={randomSpin} digitCycles={odometer ? plan.allCycles : undefined} digitFrom={odometer ? plan.allFrom : undefined} easing={easing} className={className} style={style}/>);
+          }
+          // Cents: a smaller fractional reel sits baseline-aligned beside the integer
+          // part; both are leaves of one labelled container so it reads as one number.
+          return (<span role="img" aria-label={head + frac + suffix} className={className} style={{ display: "inline-block", ...style }}>
+            <SlotText text={head} direction={odometerDir} randomSpin={randomSpin} digitCycles={odometer ? plan.headCycles : undefined} digitFrom={odometer ? plan.headFrom : undefined} easing={easing}/>
+            <SlotText text={frac} direction={odometerDir} randomSpin={randomSpin} digitCycles={odometer ? plan.fracCycles : undefined} digitFrom={odometer ? plan.fracFrom : undefined} easing={easing} style={{ fontSize: "0.9em" }}/>
+            {suffix ? <span>{suffix}</span> : null}
+          </span>);
+      }
+      // === END GENERATED ===
 
       // ---- demo plumbing ----------------------------------------------------
       const STRINGS = {

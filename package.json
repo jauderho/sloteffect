@@ -44,6 +44,7 @@
   ],
   "scripts": {
     "build": "tsup",
+    "build:index": "bun run scripts/build-index.ts",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
