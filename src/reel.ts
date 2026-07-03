@@ -254,7 +254,26 @@ export function isIdeograph(ch: string): boolean {
 
 /** True when `ch` is an emoji / pictographic glyph (which never rolls). */
 export function isEmoji(ch: string): boolean {
+  // Cheap bail-out: the lowest Extended_Pictographic code point is © (U+00A9),
+  // so plain ASCII (digits, Latin, punctuation — the common case) can skip the
+  // Unicode-property regex entirely.
+  if ((ch.codePointAt(0) ?? 0) < 0xa9) return false;
   return /\p{Extended_Pictographic}/u.test(ch);
+}
+
+// Cached per-pool glyph arrays so hot paths (one lookup per grapheme, per
+// build) don't re-split the same charset or spin pool with Array.from.
+const POOL_CACHE = new Map<string, string[]>();
+function poolChars(pool: string): string[] {
+  let chars = POOL_CACHE.get(pool);
+  if (!chars) {
+    chars = Array.from(pool);
+    // The cache only ever holds charsets and spin pools (a handful of strings);
+    // bound it anyway so adversarial per-call pools can't grow it unboundedly.
+    if (POOL_CACHE.size > 32) POOL_CACHE.clear();
+    POOL_CACHE.set(pool, chars);
+  }
+  return chars;
 }
 
 /**
@@ -280,7 +299,7 @@ export function sampleSpin(
   rand: () => number = Math.random,
 ): string[] {
   const out: string[] = [];
-  const chars = Array.from(pool);
+  const chars = poolChars(pool);
   for (let i = 0; i < n; i++)
     out.push(chars[Math.floor(rand() * chars.length)] as string);
   return out;
@@ -334,9 +353,9 @@ export function chooseReel(
     ? (source as string)
     : randomGlyph(
         cs
-          ? Array.from(cs)
+          ? poolChars(cs)
           : isIdeograph(target)
-            ? Array.from(spinPool)
+            ? poolChars(spinPool)
             : letterPool,
         target,
         rand,
