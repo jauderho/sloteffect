@@ -6,6 +6,12 @@
       "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "http.server", "4178"],
       "port": 4178
+    },
+    {
+      "name": "bench",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "bench/run.ts", "--port", "8735"],
+      "port": 8735
     }
   ]
 }

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>sloteffect bench — baseline vs current</title>
+    <style>
+      body {
+        font-family:
+          ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        background: #0b0d12;
+        color: #e6e8eb;
+        margin: 2rem;
+      }
+      #stage {
+        /* Invisible but pinned inside the viewport: the library skips
+           animating offscreen instances, so an off-viewport stage would
+           measure only the gated (non-animating) build path and hide
+           regressions in the real one. Opacity keeps it unseen; the rects
+           the gate tests stay at the viewport's top-left. */
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        opacity: 0;
+        pointer-events: none;
+      }
+      pre#results {
+        white-space: pre-wrap;
+        font-size: 14px;
+        line-height: 1.6;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>sloteffect A/B bench</h1>
+    <pre id="results">running…</pre>
+    <div id="stage"></div>
+    <script type="module" src="./.work/entry.js"></script>
+  </body>
+</html>

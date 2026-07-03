@@ -7,6 +7,9 @@ node_modules/
 # Build output
 dist/
 
+# Generated benchmark working files (baseline/current src copies + bundle)
+bench/.work/
+
 # Lockfiles from other package managers (bun is canonical here)
 package-lock.json
 yarn.lock
