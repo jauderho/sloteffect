@@ -1,13 +1,15 @@
 /**
  * build-index.ts — regenerate the showcase (index.html) from src/.
  *
- * index.html is a single static page: it embeds a dependency-free, in-browser
- * port of the library so the demo runs from one file (Babel-standalone compiles
- * the JSX at load). That port is *generated* from src/ so it can never drift
- * from the published package — each source module is type-stripped (its JSX is
- * preserved for Babel) and its import/export lines removed, then the modules are
- * concatenated in dependency order and spliced into index.html between the two
- * GENERATED markers. The hand-written demo plumbing around it is left untouched.
+ * index.html is a single static page: it embeds a dependency-free port of the
+ * library plus the demo app as plain, pre-compiled JS — no in-browser compiler,
+ * so the page loads without Babel-standalone's multi-megabyte download and
+ * main-thread compile. The port is *generated* from src/ so it can never drift
+ * from the published package — each source module is transpiled (types
+ * stripped, JSX compiled to React.createElement against the page's UMD React)
+ * and its import/export lines removed, then the modules are concatenated in
+ * dependency order, followed by the demo app (scripts/showcase.jsx), and
+ * spliced into index.html between the two GENERATED markers.
  *
  * Usage:
  *   bun run build:index            rewrite index.html in place
@@ -31,8 +33,11 @@ const INDEX = join(ROOT, "index.html");
 // package's barrel of re-exports) is intentionally excluded.
 const MODULES = ["reel.ts", "SlotText.tsx", "SlotLetter.tsx", "SlotNumber.tsx"];
 
+// The hand-written demo app (controls, cards, i18n) appended after the modules.
+const SHOWCASE = join(ROOT, "scripts", "showcase.jsx");
+
 // The generated block lives between these markers; everything outside them
-// (the HTML shell, the React preamble, the demo plumbing) is hand-written.
+// (the HTML shell and the React <script> tags) is hand-written.
 const BEGIN =
   "// === BEGIN GENERATED: sloteffect inline port — from src/ via `bun run build:index`; do not edit ===";
 const END = "// === END GENERATED ===";
@@ -50,12 +55,12 @@ const log = (msg: string) => {
   if (verbose) process.stderr.write(`${msg}\n`);
 };
 
-/** Type-strip one source module, keeping JSX (for Babel) and comments. */
+/** Transpile one source module: strip types, compile JSX, keep comments. */
 function transpile(source: string, fileName: string): string {
   const out = ts.transpileModule(source, {
     fileName,
     compilerOptions: {
-      jsx: ts.JsxEmit.Preserve,
+      jsx: ts.JsxEmit.React,
       target: ts.ScriptTarget.ES2020,
       module: ts.ModuleKind.ESNext,
       removeComments: false,
@@ -79,8 +84,12 @@ function stripModuleSyntax(code: string): string {
 
 /** Build the generated body from all source modules. */
 function buildBody(): string {
-  const parts = MODULES.map((file) => {
-    const source = readFileSync(join(SRC, file), "utf8");
+  const sources = [
+    ...MODULES.map((file) => ({ file, path: join(SRC, file) })),
+    { file: "showcase.jsx", path: SHOWCASE },
+  ];
+  const parts = sources.map(({ file, path }) => {
+    const source = readFileSync(path, "utf8");
     log(`  transpiling ${file}`);
     const stripped = stripModuleSyntax(transpile(source, file)).trim();
     return `// ---- ${file} ${"-".repeat(Math.max(0, 66 - file.length))}\n${stripped}`;
